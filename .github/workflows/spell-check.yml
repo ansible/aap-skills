@@ -1,0 +1,15 @@
+name: Spell Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+jobs:
+  codespell:
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder
+        run: echo "Spell check placeholder - will implement in next PR"
