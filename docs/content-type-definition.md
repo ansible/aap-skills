@@ -557,8 +557,6 @@ The three-layer schema is designed so that future skill families can adopt this 
 - [ANSTRAT-2122](https://redhat.atlassian.net/browse/ANSTRAT-2122) — Ansible Skill Content Type Definition (this feature)
 - [ANSTRAT-2123](https://redhat.atlassian.net/browse/ANSTRAT-2123) — AAP Operational Skill Authoring
 - [ANSTRAT-2140](https://redhat.atlassian.net/browse/ANSTRAT-2140) — External Marketplace Publishing
-- [SKILL.md → Compass AiResource mapping](./docs/skill-md-to-airesource-mapping.md) — Catalog adapter specification
-- [Skills over MCP Implementation Assessment](./Tier%201%20Skills%20over%20MCP%20—%20Implementation%20Assessment.md) — MCP server implementation plan
 
 **Related — future profile compatibility:**
 

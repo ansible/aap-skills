@@ -1,0 +1,15 @@
+[project]
+name = "aap-skills"
+version = "0.1.0"
+description = "AI agent skills for Ansible Automation Platform"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+    "jsonschema>=4.0",
+    "markdown>=3.6",
+]
+
+[dependency-groups]
+dev = [
+    "codespell>=2.3.0",
+]
