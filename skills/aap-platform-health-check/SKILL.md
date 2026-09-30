@@ -34,21 +34,27 @@ id: aap-platform-health-check
 version: 1.0.0
 category: platform-operations
 
+# The AAP MCP Server is a single MCP server, named "aap". It exposes all tools at
+# /mcp and subsets at /mcp/<toolset>; the server name is "aap" on every endpoint.
+# Toolset membership is recorded in comments below — it determines which endpoint
+# serves a tool, but it is not part of the server's identity.
 mcpToolDependencies:
-  - server: aap-mcp-system-monitor
-    tools: [status_retrieve, mesh_visualizer_retrieve, instances_retrieve,
-            instance_groups_list, activity_stream_list, feature_flags_state_retrieve]
-  - server: aap-mcp-platform-config
-    tools: [config_retrieve, execution_environments_list,
-            controller-settings_list, settings_retrieve, gateway-settings_list]
-  - server: aap-mcp-job-mgmt
-    tools: [jobs_list, projects_list, metrics_retrieve, activation_instances_list]
-  - server: aap-mcp-inventory-mgmt
-    tools: [inventories_list, hosts_list]
-  - server: aap-mcp-security
-    tools: [credentials_list]
-  - server: aap-mcp-user-mgmt
-    tools: [me_list]
+  - server: aap
+    tools: [
+            # system_monitoring
+            status_retrieve, mesh_visualizer_retrieve, instances_retrieve,
+            instance_groups_list, activity_stream_list, feature_flags_state_retrieve,
+            # platform_configuration
+            config_retrieve, execution_environments_list,
+            controller-settings_list, settings_retrieve, gateway-settings_list,
+            # job_management
+            jobs_list, projects_list, metrics_retrieve, activation_instances_list,
+            # inventory_management
+            inventories_list, hosts_list,
+            # security_compliance
+            credentials_list,
+            # user_management
+            me_list]
 
 supportBoundary:
   model: red-hat
