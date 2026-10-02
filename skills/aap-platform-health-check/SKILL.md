@@ -23,7 +23,7 @@ allowed-tools: >-
   credentials_list me_list
 metadata:
   author: Red Hat
-  version: "1.0.0"
+  version: "1.1.0"
 
 # ─── Agent Runtime Hints ────────────────────────────────────────────────────
 model: inherit
@@ -31,7 +31,7 @@ color: cyan
 
 # ─── Red Hat Skill Fields ───────────────────────────────────────────────────
 id: aap-platform-health-check
-version: 1.0.0
+version: 1.1.0
 category: platform-operations
 
 # The AAP MCP Server is a single MCP server, named "aap". It exposes all tools at
@@ -133,7 +133,170 @@ This skill applies a two-tier sourcing model: (1) live Red Hat documentation whe
 
 ## Workflow
 
-This skill follows a 4-step workflow: trigger → gather → analyze → report. All operations are read-only via the AAP MCP Server.
+This skill follows a 4-step workflow: trigger → gather → analyze → report. All operations are read-only via the AAP MCP Server. It also supports an optional local baseline workflow for recording platform state before a change and comparing a later health check against it.
+
+## Baseline and Diff Mode
+
+### Purpose
+
+Baseline mode turns point-in-time reports into an auditable before/after record. An administrator can:
+
+1. Run a health check and record a normalized local snapshot.
+2. Make an approved AAP change outside this skill.
+3. Run the same health check again.
+4. Compare the new snapshot with the recorded baseline and review expected and unexpected changes.
+
+Baseline mode never writes to AAP. It writes only the locally requested report and snapshot artifacts. If the runtime cannot persist local files, return the normalized snapshot and diff in the response instead.
+
+### Baseline inputs
+
+| Input | Values | Meaning |
+|---|---|---|
+| `baseline_action` | `none`, `record`, `compare` | Do not persist state, create a baseline, or compare with a baseline |
+| `baseline_ref` | Local path or artifact identifier | Required for `compare`; identifies the baseline snapshot |
+| `comparison_scope` | `all`, `topology`, `configuration`, `workloads`, `security` | Limit diff output; default `all` |
+| `expected_changes` | Structured list or text | Optional operator description of approved changes |
+
+If `compare` is requested without a readable baseline, stop comparison and report the exact fetch or parse failure. Do not silently create a new baseline or treat the current state as its own baseline.
+
+### Snapshot contract
+
+A recorded snapshot is JSON or equivalent structured data with this envelope:
+
+```json
+{
+  "schema_version": "1",
+  "baseline_id": "2026-10-01T15:49:22Z-car-maap1",
+  "observed_at": "2026-10-01T15:49:22Z",
+  "target": "carmaap1.lan",
+  "aap_version": "4.8.9",
+  "mode": "full",
+  "tool_results": {
+    "requested": 19,
+    "succeeded": 19,
+    "skipped": [],
+    "failed": []
+  },
+  "state": {}
+}
+```
+
+`state` contains normalized, non-secret observations grouped by health-check dimension:
+
+- `services`: service names and status.
+- `mesh`: node identities, node types, readiness, enabled state, and links.
+- `instances`: capacity, consumed capacity, remaining capacity, node state, runner version, and last-seen time.
+- `instance_groups`: names, capacity, consumed capacity, remaining capacity, running jobs, and member hostnames.
+- `activity`: recent change identifiers, timestamps, operations, object types, and redacted change summaries.
+- `configuration`: AAP version, non-secret settings, feature flags, and configuration categories.
+- `license`: validity/compliance booleans and time-window classification only; never account, subscription, SKU, pool, or credential identifiers.
+- `workloads`: job/project/activation counts and status summaries.
+- `resources`: metrics, queue depth, inventory/host counts, and execution-environment metadata without secrets.
+- `access`: role and privilege summary without usernames or tokens unless explicitly authorized and redacted.
+
+The snapshot must preserve tool success, skip, and failure state. A partial snapshot is not equivalent to a complete baseline.
+
+### Normalization and redaction
+
+Before comparison:
+
+- Normalize timestamps to UTC and record `observed_at` separately from state values.
+- Sort unordered collections by stable human-readable identity.
+- Compare instance and group identities by hostname/name, not database IDs.
+- Exclude volatile fields such as request URLs, pagination cursors, generated UUIDs, current timestamps, and metric scrape timestamps unless they are the subject of the finding.
+- Retain activity timestamps and IDs only for change correlation; do not use them as proof that a change was approved.
+- Redact passwords, tokens, private keys, certificate contents, account numbers, subscription IDs, installation UUIDs, and other secrets or commercial identifiers.
+- Mark unavailable, permission-denied, stale, and not-collected values explicitly. Do not convert them to `null` and describe them as unchanged.
+
+### Diff rules
+
+Compare normalized state by dimension and emit each difference as:
+
+```text
+category | path | change | baseline | current | classification | evidence
+```
+
+Use these classifications:
+
+- `ADDED`: identity exists only in current state.
+- `REMOVED`: identity existed only in baseline.
+- `CHANGED`: identity exists in both states but a comparable value changed.
+- `UNCHANGED`: no report entry; retain counts in the summary.
+- `UNKNOWN`: comparison blocked by missing, failed, unauthorized, or stale data.
+
+Severity remains independent from change type:
+
+- **CRITICAL:** a change or unknown state affects service availability, database reachability, expired licensing, or all usable capacity.
+- **WARNING:** a change reduces capacity, changes topology, introduces failures, or leaves a required comparison incomplete.
+- **INFO:** an expected or low-risk change, such as a planned node addition, successful version change, or normal license countdown.
+
+For every `CRITICAL` or `WARNING` diff, state whether it is:
+
+1. `EXPECTED` — matches `expected_changes`.
+2. `UNEXPECTED` — not described by the operator.
+3. `UNVERIFIED` — possibly related, but intent cannot be established from MCP evidence.
+
+Do not infer operator intent from activity-stream actor fields alone.
+
+### Baseline artifact layout
+
+When local persistence is available, use separate immutable-by-convention artifacts:
+
+```text
+<report_root>/aap-platform-health/
+  baselines/<target>/<baseline_id>.json
+  reports/<target>/<observed_at>-baseline.md
+  diffs/<target>/<observed_at>-vs-<baseline_id>.md
+```
+
+Never overwrite a baseline. A new baseline gets a new identifier. A comparison report records the baseline path, current observation time, schema version, MCP tool coverage, and optional content hashes. File permissions and retention remain the administrator's responsibility; do not claim tamper-proof audit storage unless the storage system provides it.
+
+### Recording a new baseline
+
+When `baseline_action=record` is selected, follow this sequence:
+
+1. Confirm target, mode, and requested dimensions before collection.
+2. Run the selected MCP checks and preserve their success, skip, and failure results.
+3. Normalize and redact the result according to the snapshot contract.
+4. Generate a new `baseline_id` from UTC observation time plus a sanitized target identifier. Do not reuse an existing ID.
+5. Check that the destination does not already contain the proposed ID. On collision, stop and generate a different ID; never overwrite.
+6. Write the structured snapshot to `baselines/<target>/<baseline_id>.json`.
+7. Write a human-readable point-in-time report to `reports/<target>/<observed_at>-baseline.md`.
+8. Compute an optional SHA-256 hash of the normalized snapshot after redaction and include it in both report metadata and the returned result.
+9. Return the baseline ID, absolute or resolvable artifact paths, observation time, tool coverage, overall status, and hash when available.
+
+Baseline creation output must be easy to pass to a later run:
+
+```json
+{
+  "action": "record",
+  "baseline_id": "2026-10-02T07:44:12Z-carmaap1-lan",
+  "baseline_ref": "baselines/carmaap1.lan/2026-10-02T07:44:12Z-carmaap1-lan.json",
+  "report_ref": "reports/carmaap1.lan/2026-10-02T07:44:12Z-baseline.md",
+  "observed_at": "2026-10-02T07:44:12Z",
+  "status": "HEALTHY",
+  "checks": {"requested": 19, "succeeded": 19, "failed": 0, "skipped": 0},
+  "snapshot_sha256": "<hash of redacted normalized snapshot>"
+}
+```
+
+If any required check fails, still preserve the artifact as a partial baseline only when the operator explicitly allows partial baselines. Mark it `partial: true`, list failed checks, and prevent it from being used as a complete comparison baseline without an explicit override.
+
+### Diff report requirements
+
+A comparison report includes:
+
+1. Baseline identity, current observation time, target, AAP versions, mode, and tool coverage.
+2. Overall status for baseline and current state.
+3. Change summary grouped by `ADDED`, `REMOVED`, `CHANGED`, and `UNKNOWN`.
+4. Severity and expectedness for every actionable difference.
+5. Detailed per-dimension diffs with baseline and current values.
+6. Correlation with relevant activity-stream entries, clearly labeled as observed correlation.
+7. Unchanged dimensions and skipped/failed checks.
+8. Operator-supplied expected changes and unmatched changes.
+9. Recommendations, including whether another post-change check is warranted.
+
+End comparison reports with: *"This assessment is advisory. For production decisions, consult Red Hat support."*
 
 ### Step 1: Verify MCP Server Connectivity and Confirm Scope
 
@@ -215,6 +378,10 @@ Read `references/advisory-baselines.md` for the detailed threshold tables and se
 | `mode` | String | No | `core` (available tools only) or `full` (all tools, skipped reported) | `core` |
 | `baseline_profile` | String | No | `default`, `small` (<100 hosts), `medium` (100-1000), `large` (1000+) | `default` |
 | `include_sections` | List | No | Sections to include: `services`, `database`, `tasks`, `license`, `versions`, `resources`, `integrations` | all |
+| `baseline_action` | String | No | `none`, `record`, or `compare` | `none` |
+| `baseline_ref` | String | For compare | Local baseline snapshot path or artifact identifier | — |
+| `comparison_scope` | String | No | `all`, `topology`, `configuration`, `workloads`, or `security` | `all` |
+| `expected_changes` | List or text | No | Approved changes expected between baseline and current run | — |
 
 ## Expected Outputs
 
@@ -240,6 +407,21 @@ Agent: I'll perform a platform health check (core mode, 6 available tools).
 User: Yes
 
 Agent: [executes Steps 1-4, presents health report with correlated analysis]
+```
+
+### Baseline comparison example
+
+```
+User: Record a full AAP health baseline before the upgrade.
+
+Agent: Run the full read-only check, normalize and redact the result, and save
+       a new local baseline artifact. No AAP configuration changes.
+
+User: Compare current state with baseline /reports/aap-platform-health/baselines/aap-2026-10-01.json.
+
+Agent: Run the same full read-only check, compare normalized state, correlate
+       differences with activity records, and report expected, unexpected, and
+       unverified changes. The baseline remains unchanged.
 ```
 
 ## Relationship to Other Skills
