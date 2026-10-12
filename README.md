@@ -20,6 +20,12 @@ AAP Skills are structured knowledge packages that enable AI agents to perform AA
 |---|-------|------|-----|-------|
 | 1 | [Platform Health Check](skills/aap-platform-health-check/SKILL.md) | Low (read-only) | Core/Full modes | Service status, mesh topology, capacity, license, EEs, queue depth |
 
+### Skill development
+
+| Skill | Purpose |
+|---|---|
+| [AAP Skill Creator](skills/aap-skill-creator/SKILL.md) | Create and validate skills for this repository |
+
 ## Content Type Definition
 
 Skills follow the [Ansible Skill Content Type Definition](docs/content-type-definition.md), a three-layer front matter schema built on [agentskills.io](https://agentskills.io):
