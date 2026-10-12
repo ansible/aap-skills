@@ -71,6 +71,8 @@ aapVersion: ">=2.5"
 
 # Platform Health Check & Diagnostics Report
 
+Follow [`context/output-format.md`](../../context/output-format.md) for report structure, Markdown formatting, save options, and the standard MCP quick reference and footer.
+
 ## Description
 
 Run comprehensive health checks across all AAP components: service status, database connectivity, job queue depth, license utilization, mesh topology, and instance group capacity. Produce an actionable diagnostics report with correlated analysis.

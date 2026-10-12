@@ -1,0 +1,278 @@
+---
+name: output-format
+description: Output formatting standard for all AAP skill reports — report structure, markdown rules, writing quality, output flow, and save options
+---
+
+# Output format standard
+
+All AAP skill reports follow this standard. This file owns *how* reports look and how they reach the user. Each SKILL.md owns *what content* goes in the report.
+
+**Degrees of freedom: low** — follow exactly.
+
+---
+
+## Output flow
+
+Every skill follows this sequence: render, then offer to save.
+
+### 1. Render the report in the conversation
+
+The report is the primary output. Render it directly in the chat or CLI prompt using native markdown. The user reads it immediately — no file download required.
+
+### 2. Offer to save
+
+After the report, ask:
+
+```
+Save this report?
+  1. Markdown (.md) — default, portable, support-ingestible
+  2. Word document (.docx) — requires pandoc
+  3. Upload to Google Drive — requires pandoc + gcloud
+  4. HTML (.html) — standalone, opens in browser
+  5. No, done
+```
+
+Wait for the user's choice before proceeding.
+
+### 3. Save in the requested format
+
+**Option 1 — Markdown (default).** Write the report to a file:
+- Path: `reports/{skill-name}_{timestamp}.md` (e.g., `reports/security-intelligence_2026-04-12.md`)
+- No additional dependencies.
+
+**Option 2 — Word document.** Convert via pandoc, then write:
+```bash
+pandoc report.md -o report.docx --from=gfm --to=docx
+```
+- Requires: `pandoc` CLI (`brew install pandoc` on macOS, `apt install pandoc` on Linux).
+- If pandoc is not installed, say so and offer option 1 instead.
+
+**Option 3 — Google Drive.** Convert to .docx via pandoc, then upload via Drive API:
+```bash
+pandoc report.md -o /tmp/report.docx --from=gfm --to=docx
+
+curl -s -X POST \
+  'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart' \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -F 'metadata={"name":"Report Title","mimeType":"application/vnd.google-apps.document","parents":["FOLDER_ID"]};type=application/json' \
+  -F 'file=@/tmp/report.docx;type=application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+```
+- Requires: `pandoc` CLI + `gcloud` CLI with authenticated session.
+- If either is missing, say so and offer options 1 or 2 instead.
+
+**Option 4 — HTML.** Generate a standalone HTML file and open in browser:
+- Path: `reports/{skill-name}_{timestamp}.html`
+- Use the HTML template from `context/templates/report.html`
+- Self-contained with inline CSS (no external dependencies)
+- Opens directly in browser: `open {path}` (macOS) or `xdg-open {path}` (Linux)
+- No additional dependencies required.
+
+When generating HTML:
+1. Read the template from `context/templates/report.html`
+2. Replace placeholders with report data (see template for placeholder names)
+3. Write to the reports directory
+4. Open in browser automatically
+
+---
+
+## Report structure
+
+Every skill report uses this skeleton. Skills define their own sections between the header and the recommended actions.
+
+### Header
+
+```markdown
+# {Skill name}
+
+| Field | Value |
+|-------|-------|
+| **Generated** | {ISO 8601 timestamp} |
+| **AAP version** | {version} (AAP {release}) |
+| **Controller** | {controller URL or hostname} |
+| **Assessed by** | {username} ({role}) |
+| **Sources** | {list of data sources queried with status} |
+| **Overall status** | {skill-specific status value} |
+```
+
+### Body
+
+```markdown
+---
+
+## Executive summary
+
+{2-4 sentences. Lead with the conclusion, not the process. State the overall status, the most significant finding, and the primary recommended action.}
+
+---
+
+{Skill-specific sections — defined in each SKILL.md. Use ## for major sections, ### for subsections, #### sparingly.}
+
+---
+
+## Recommended actions
+
+{Prioritized list. Each item has a severity label and a reference.}
+
+| Priority | Action | Reference |
+|----------|--------|-----------|
+| **[CRITICAL]** | {action} | {CVE/advisory/finding ID} |
+| **[IMPORTANT]** | {action} | {reference} |
+| **[ADVISORY*]** | {action} | {reference} |
+
+---
+
+## Reference links
+
+- {Relevant Red Hat documentation links}
+
+---
+
+## MCP quick reference
+
+| Server | MCP tools declared by skill |
+|---|---|
+| AAP MCP Server | `{tool_a}`, `{tool_b}`, `{tool_c}` |
+
+Runtime status: `{succeeded}` succeeded, `{failed}` failed, `{skipped}` skipped.
+```
+
+Use this section when the report called one or more MCP tools. Populate it from
+the skill's existing `MCP Tools Used` or equivalent Markdown tool table.
+
+Rules:
+
+- Use tools from the skill's current Markdown tool table. Label them as declared
+  unless runtime call results are available.
+- Use server names from the skill's MCP table.
+- Group tools by server when a report uses multiple MCP servers.
+- Report failed or skipped tools when runtime results are available.
+- Never include tool arguments, credential-bearing URLs, tokens, or response data.
+- Omit this section when no MCP tool was called.
+
+### Footer
+
+```markdown
+---
+
+> **Disclaimer:** This report is generated by an AI skill correlating data from
+> Red Hat services. It is advisory and does not constitute an official Red Hat
+> assessment. Thresholds marked with `*` are advisory baselines not published
+> by Red Hat. For definitive guidance, contact Red Hat Product Security or your
+> Technical Account Manager.
+>
+> **Confidential:** This report contains platform configuration details.
+> Do not share in uncontrolled channels.
+```
+
+---
+
+## Markdown formatting
+
+### Structure
+
+- **Headings:** `#` through `####` only. Sentence case. Never use h5 (`#####`) or h6.
+- **Horizontal rules:** `---` between major sections. Never `====`, `----` as dividers, `+---+`, or box-drawing characters.
+- **No ASCII art.** Never use repeated `=` or `-` lines, box-drawing characters, or `+---+` table borders.
+- **No preformatted report blocks.** Never wrap the entire report or large narrative sections in a fenced code block (`` ``` ``). Use native markdown headings, tables, and lists.
+
+### Tables
+
+- Use markdown tables for structured data with 2+ columns.
+- Always include a header row.
+- Keep cell content under 60 characters. Use footnotes for longer text.
+
+### Lists
+
+- `-` for bullets (never `*`). 2-space indent for nesting.
+- Numbered lists for sequential steps only.
+- **Labeled bullets:** `- **Label:** Description.` (sentence case, period at end).
+- Parallel structure across all items.
+
+### Inline formatting
+
+- `` `backticks` `` for tool names, API endpoints, file paths, CVE IDs, field names, CLI commands, version numbers.
+- **Bold** for status labels, severity levels, finding titles.
+- *Italic* for advisory notes and caveats.
+
+### Code blocks
+
+- Fenced code blocks (`` ``` ``) only for actual code, CLI commands, or configuration snippets.
+- Include a language identifier: `` ```yaml ``, `` ```bash ``, `` ```json ``.
+- Never use a code block for narrative text, findings, or report sections.
+
+### Blockquotes
+
+- `>` for disclaimers, advisory notices, and important callouts only.
+
+---
+
+## Status and severity formatting
+
+### Overall status
+
+Use one of these status values consistently. Each skill defines which status set applies.
+
+| Status | Meaning |
+|--------|---------|
+| **HEALTHY** / **SECURE** / **READY** / **COMPLIANT** / **SUPPORTED** | No issues found |
+| **NEEDS ATTENTION** / **EXPOSED** / **PARTIAL** | Non-critical issues requiring planned action |
+| **CRITICAL** / **FAIL** / **NOT SUPPORTED** / **CRITICAL EXPOSURE** | Blocking issues requiring immediate action |
+
+Format in the report: `**Status: HEALTHY**`
+
+### Finding severity labels
+
+| Label | Use for |
+|-------|---------|
+| **[CRITICAL]** | Blocking issues requiring immediate action |
+| **[IMPORTANT]** | Significant issues requiring planned action |
+| **[WARNING]** | Issues that may become problems |
+| **[INFO]** | Informational, no action needed |
+| **[PASS]** | Check passed successfully |
+
+Format: `- **[CRITICAL]** Description of the finding.`
+
+### Advisory baselines
+
+Any threshold or classification not published by Red Hat:
+1. Mark with `*` after the value
+2. Label as "advisory" in the text
+3. Include in the disclaimer
+
+Example: `CVSS >= 7.0*` with footnote: `*Advisory threshold — not published by Red Hat Product Security.`
+
+---
+
+## Writing quality
+
+### Voice
+
+- Active voice. Direct. One concept per sentence.
+- Max 25-30 words per sentence.
+- Lead with findings, not process. Write "The Gateway component has 5 unpatched CVEs" not "After querying the CVE MCP server, we found that the Gateway has 5 unpatched CVEs."
+- Security writing: focus on controls (validates, enforces, requires, filters, checks), not threats (prevents, protects, stops, defends against).
+
+### Banned vocabulary
+
+Never use: delve, tapestry, testament, underscore/underscoring, pivotal, crucial, landscape (abstract), realm, comprehensive, robust, leverage (as verb), showcase/showcasing, align/aligning with.
+
+Never use these patterns:
+- "It is important/critical/crucial to note/remember"
+- "In conclusion/summary/overall"
+- "Not only... but also"
+- "In the rapidly evolving landscape of..."
+
+Use "important" instead of "crucial." Use "support" instead of "align with."
+
+### Product names
+
+- **Always capitalized:** AAP, RHDH, Event-Driven Ansible controller, OAuth 2.0
+- **Lowercase components:** automation controller, automation hub, platform gateway, automation mesh
+- **First reference:** full name with acronym. Then acronym only.
+
+### Numbers and dates
+
+- Dates: ISO 8601 (`2026-04-12`) in data fields. Human-readable (`April 12, 2026`) in narrative text.
+- Durations: exact ("174 days remaining"), never approximate ("about 6 months").
+- Counts: exact numbers, never "several" or "a few."
+- Percentages: one decimal place (`99.4%`).
