@@ -25,6 +25,11 @@ AAP Skills are structured knowledge packages that enable AI agents to perform AA
 | Skill | Risk | MCP | Notes |
 |---|---|---|---|
 | [Effective Access Review](skills/aap-effective-access-review/SKILL.md) | Sensitive read-only | Full | User/team effective RBAC access and capability review |
+### Skill development
+
+| Skill | Purpose |
+|---|---|
+| [AAP Skill Creator](skills/aap-skill-creator/SKILL.md) | Create and validate skills for this repository |
 
 ## Content Type Definition
 
