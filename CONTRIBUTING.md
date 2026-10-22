@@ -12,7 +12,7 @@ Thank you for contributing to AAP Skills for Ansible Automation Platform.
 
 1. Fork `ansible/aap-skills` and create a focused feature branch from `main`.
 2. Add or update content under the appropriate repository path.
-3. Keep each skill in `skills/aap-<kebab-case-name>/SKILL.md`. The directory name and frontmatter `name` must match.
+3. Keep each skill in `skills/aap-<kebab-case-name>/SKILL.md`. The directory name, the frontmatter `name`, and the frontmatter `id` must all match. The MCP server derives the final segment of a skill's `skill://` URI from the directory name, and SEP-2640 makes a mismatch between that segment and the frontmatter `name` a load failure on a conforming host.
 4. For an AAP platform skill, follow the three-layer frontmatter defined in the content type specification:
    - agentskills.io base fields, including `name`, `description`, and `license`.
    - Red Hat skill fields, including `id`, `version`, `category`, `mcpToolDependencies`, and `supportBoundary`.
@@ -21,6 +21,17 @@ Thank you for contributing to AAP Skills for Ansible Automation Platform.
 6. Default platform operations to read-only. Write or destructive workflows need explicit user confirmation, clear impact details, and RBAC enforcement.
 7. Put substantial, version-sensitive material in a skill `references/` directory. Keep links relative and verify them locally.
 8. For report-generating skills, follow [`context/output-format.md`](context/output-format.md), including the MCP quick reference and standard footer.
+
+## Per-skill limits
+
+Every file in a skill directory is served as an individual MCP resource, and [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) fixes two limits on that set:
+
+| Limit | Value | Counted over |
+|-------|-------|--------------|
+| Resources per skill | 512 entries | Every file in the skill directory, `SKILL.md` included |
+| Total size per skill | 16 MiB (16,777,216 bytes) | The sum of those files' byte sizes |
+
+A conforming host is only required to load skills up to these values, so a skill over either one may simply refuse to load. `make validate` rejects it before it reaches a release.
 
 ## Validate locally
 
@@ -31,10 +42,11 @@ make install
 make validate
 ```
 
-`make validate` runs the skill validator and codespell. For a spelling-only check, run:
+`make validate` runs the skill validator, codespell, and the validator's own unit tests. To run a single part:
 
 ```bash
-make validate-spelling
+make validate-spelling   # codespell only
+make test                # validator unit tests only
 ```
 
 When a change depends on live AAP behavior, test it through the AAP MCP Server when access is available. Record the AAP version, MCP tools exercised, access limitations, and any unverified checks in the pull request. Do not include secrets or sensitive response data.

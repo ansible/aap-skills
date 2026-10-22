@@ -9,6 +9,7 @@ uv.lock
 
 # Validation artifacts
 .validate/
+.pytest_cache/
 
 # IDE
 .vscode/
