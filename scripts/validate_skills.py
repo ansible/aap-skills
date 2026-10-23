@@ -43,6 +43,9 @@ MAX_SKILL_BYTES = 16 * 1024 * 1024  # 16 MiB (16,777,216 bytes)
 # Every skill directory must carry the AAP prefix.
 SKILL_DIR_PREFIX = 'aap-'
 
+# Front matter starts on line 2 of SKILL.md, after the opening '---'.
+FRONTMATTER_FIRST_LINE = 2
+
 
 class ValidationError:
     def __init__(self, skill_path: Path, message: str, severity: str = 'error'):
@@ -54,6 +57,20 @@ class ValidationError:
         color = RED if self.severity == 'error' else YELLOW
         symbol = '✗' if self.severity == 'error' else '⚠'
         return f"{color}{symbol} {self.skill_path.parent.name}: {self.message}{RESET}"
+
+
+def split_frontmatter(content: str) -> Tuple[str, str]:
+    """Split SKILL.md into its front matter YAML and its body.
+
+    Returns ('', '') when the delimiters are missing. The front matter begins
+    on line 2 of the file, which is what FRONTMATTER_FIRST_LINE records.
+    """
+    if not content.startswith('---\n'):
+        return '', ''
+    parts = content.split('---\n', 2)
+    if len(parts) < 3:
+        return '', ''
+    return parts[1], parts[2]
 
 
 def parse_skill_frontmatter(skill_md: Path) -> Tuple[Dict[str, Any], str, List[ValidationError]]:
@@ -71,13 +88,10 @@ def parse_skill_frontmatter(skill_md: Path) -> Tuple[Dict[str, Any], str, List[V
         errors.append(ValidationError(skill_md, "Missing front matter delimiter (---) at start of file"))
         return {}, "", errors
 
-    parts = content.split('---\n', 2)
-    if len(parts) < 3:
+    frontmatter_str, body = split_frontmatter(content)
+    if not frontmatter_str and not body:
         errors.append(ValidationError(skill_md, "Missing closing front matter delimiter (----)"))
         return {}, "", errors
-
-    frontmatter_str = parts[1]
-    body = parts[2]
 
     try:
         frontmatter = yaml.safe_load(frontmatter_str)
@@ -109,6 +123,80 @@ def validate_kebab_case(value: str) -> bool:
 def validate_semver(value: str) -> bool:
     """Validate semantic versioning (X.Y.Z)."""
     return bool(re.match(r'^\d+\.\d+\.\d+$', value))
+
+
+def validate_frontmatter_subset(skill_md: Path) -> List[ValidationError]:
+    """Reject front matter the MCP server's own reader will not parse.
+
+    The server does not use PyYAML. It reads SKILL.md with a restricted YAML
+    reader that covers the subset real skills use and throws on anything else,
+    rather than risk reading a construct differently from a full YAML parser.
+    That strictness is load-bearing rather than fussy: SEP-2640 makes a host
+    re-parse the same bytes and compare the result field by field against the
+    server's, and any discrepancy is a load failure, so the two parsers have to
+    agree. The subset is their intersection.
+
+    The practical consequence is that valid YAML 1.2 can still be unservable.
+    A skill the server cannot read is skipped from the catalog entirely — not
+    degraded, absent — so this has to fail here rather than at startup.
+
+    These are the constructs that are both outside the subset and plausible in
+    hand-written front matter. The authoritative check is the server's reader;
+    this one is the fast feedback at PR time.
+    """
+    errors = []
+
+    try:
+        content = skill_md.read_text(encoding='utf-8')
+    except OSError:
+        return errors  # reported by parse_skill_frontmatter
+
+    frontmatter_str, _ = split_frontmatter(content)
+    if not frontmatter_str:
+        return errors
+
+    try:
+        tokens = list(yaml.scan(frontmatter_str))
+    except yaml.YAMLError:
+        return errors  # invalid YAML outright, reported by the parser
+
+    def at(mark) -> int:
+        return mark.line + FRONTMATTER_FIRST_LINE
+
+    flow_starts = []
+    for token in tokens:
+        kind = type(token).__name__
+
+        if kind in ('FlowSequenceStartToken', 'FlowMappingStartToken'):
+            flow_starts.append(token)
+        elif kind in ('FlowSequenceEndToken', 'FlowMappingEndToken'):
+            if not flow_starts:
+                continue
+            start = flow_starts.pop()
+            if start.start_mark.line != token.end_mark.line:
+                bracket = '[' if kind == 'FlowSequenceEndToken' else '{'
+                errors.append(ValidationError(
+                    skill_md,
+                    f"line {at(start.start_mark)}: a flow collection '{bracket}' "
+                    f"must open and close on the same line. The server's front "
+                    f"matter reader rejects a multi-line flow collection and "
+                    f"skips the whole skill. Use a block sequence "
+                    f"('- item' on its own line) instead."))
+        elif kind in ('AnchorToken', 'AliasToken', 'TagToken'):
+            errors.append(ValidationError(
+                skill_md,
+                f"line {at(token.start_mark)}: anchors, aliases and tags are "
+                f"not supported by the server's front matter reader."))
+        elif kind == 'ScalarToken' and token.style in ('"', "'"):
+            if token.start_mark.line != token.end_mark.line:
+                errors.append(ValidationError(
+                    skill_md,
+                    f"line {at(token.start_mark)}: a quoted value must close "
+                    f"on the same line. The server's front matter reader "
+                    f"rejects a multi-line quoted value. Use a block scalar "
+                    f"('|' or '>') for text spanning lines."))
+
+    return errors
 
 
 def collect_skill_files(skill_dir: Path) -> List[Path]:
@@ -182,6 +270,11 @@ def validate_skill(skill_dir: Path) -> List[ValidationError]:
     # SEP-2640 per-skill limits. Independent of front matter, so they run before
     # parsing and are not short-circuited by a parse failure.
     errors.extend(validate_skill_limits(skill_dir))
+
+    # Front matter the server's reader will not parse. Checked on the raw text
+    # before PyYAML gets it, because PyYAML is the more permissive of the two
+    # and accepts constructs that leave the skill unservable.
+    errors.extend(validate_frontmatter_subset(skill_md))
 
     # Parse front matter
     frontmatter, body, parse_errors = parse_skill_frontmatter(skill_md)

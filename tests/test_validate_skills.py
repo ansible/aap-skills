@@ -197,6 +197,136 @@ def test_directory_without_the_aap_prefix_fails(tmp_path):
                for m in messages(validate_skills.validate_skill(skill_dir)))
 
 
+# --- Front matter the server's reader will not parse ------------------------
+
+def write_frontmatter(tmp_path: Path, yaml_text: str) -> Path:
+    skill_dir = tmp_path / 'aap-example'
+    skill_dir.mkdir()
+    skill_md = skill_dir / 'SKILL.md'
+    skill_md.write_text(f"---\n{yaml_text}---\n\n# Example\n", encoding='utf-8')
+    return skill_md
+
+
+def test_multi_line_flow_sequence_is_rejected(tmp_path):
+    """The real aap-platform-health-check defect: valid YAML, unservable."""
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+mcpToolDependencies:
+  - server: aap
+    tools: [
+            # system_monitoring
+            status_retrieve, me_list]
+""")
+
+    errors = validate_skills.validate_frontmatter_subset(skill_md)
+
+    assert len(errors) == 1
+    assert 'line 5' in errors[0].message
+    assert 'open and close on the same line' in errors[0].message
+
+
+def test_multi_line_flow_mapping_is_rejected(tmp_path):
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+supportBoundary: {
+  model: red-hat }
+""")
+
+    errors = validate_skills.validate_frontmatter_subset(skill_md)
+
+    assert len(errors) == 1
+    assert 'line 3' in errors[0].message
+
+
+def test_one_line_flow_collections_are_accepted(tmp_path):
+    """The reader supports these, and real skills use them for empty lists."""
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+mcpToolDependencies: []
+supportBoundary: {model: red-hat}
+tools: [status_retrieve, me_list]
+""")
+
+    assert validate_skills.validate_frontmatter_subset(skill_md) == []
+
+
+def test_block_sequences_are_accepted(tmp_path):
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+mcpToolDependencies:
+  - server: aap
+    tools:
+      # system_monitoring
+      - status_retrieve
+      - me_list
+""")
+
+    assert validate_skills.validate_frontmatter_subset(skill_md) == []
+
+
+def test_multi_line_quoted_value_is_rejected(tmp_path):
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+compatibility: "Requires the AAP MCP Server
+  for Ansible Automation Platform 2.5+"
+""")
+
+    errors = validate_skills.validate_frontmatter_subset(skill_md)
+
+    assert len(errors) == 1
+    assert 'must close on the same line' in errors[0].message
+
+
+def test_block_scalars_are_accepted(tmp_path):
+    """Block scalars are in the subset, and are how multi-line text is written."""
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+description: |
+  Determine what access a user has.
+
+  Use when: reviewing access.
+
+  NOT for: auditing.
+allowed-tools: >-
+  status_retrieve me_list
+  users_list
+""")
+
+    assert validate_skills.validate_frontmatter_subset(skill_md) == []
+
+
+def test_anchors_and_aliases_are_rejected(tmp_path):
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+base: &base
+  model: red-hat
+supportBoundary: *base
+""")
+
+    messages_ = messages(validate_skills.validate_frontmatter_subset(skill_md))
+
+    assert messages_
+    assert all('anchors, aliases and tags' in m for m in messages_)
+
+
+def test_subset_check_runs_as_part_of_validate_skill(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'SKILL.md').write_text(
+        "---\nname: aap-example\ntools: [\n  a, b]\n---\n\n# Example\n",
+        encoding='utf-8')
+
+    assert any('open and close on the same line' in m
+               for m in messages(validate_skills.validate_skill(skill_dir)))
+
+
+def test_pyyaml_accepts_what_the_server_rejects(tmp_path):
+    """Why this check exists: PyYAML alone would have passed the defect."""
+    import yaml
+
+    skill_md = write_frontmatter(tmp_path, """name: aap-example
+tools: [
+  status_retrieve, me_list]
+""")
+    frontmatter, _ = validate_skills.split_frontmatter(
+        skill_md.read_text(encoding='utf-8'))
+
+    assert yaml.safe_load(frontmatter)['tools'] == ['status_retrieve', 'me_list']
+    assert validate_skills.validate_frontmatter_subset(skill_md) != []
+
+
 # --- Discovery --------------------------------------------------------------
 
 def test_discovery_finds_a_skill_whose_directory_lost_the_prefix(tmp_path):

@@ -33,6 +33,22 @@ Every file in a skill directory is served as an individual MCP resource, and [SE
 
 A conforming host is only required to load skills up to these values, so a skill over either one may simply refuse to load. `make validate` rejects it before it reaches a release.
 
+## Front matter style
+
+Write front matter in block style. Use `- item` on its own line for lists, and a block scalar (`|` or `>-`) for text spanning lines.
+
+This is narrower than YAML allows, and deliberately so. The MCP server does not read `SKILL.md` with a general YAML parser — it uses a restricted reader covering the subset skills actually use, and it throws on anything outside that subset rather than risk reading a construct differently from a full parser. SEP-2640 makes that agreement load-bearing: a host re-parses the same bytes and compares the result field by field against the server's, and any discrepancy is a load failure.
+
+So valid YAML can still be unservable, and the failure is silent — a skill the server cannot read is skipped from the catalog entirely, not degraded. `make validate` rejects the constructs most likely to appear in hand-written front matter:
+
+| Not supported | Write instead |
+|---------------|---------------|
+| A flow collection spanning lines — `tools: [` with items below | A block sequence, `- item` per line |
+| A quoted value spanning lines | A block scalar, `\|` or `>-` |
+| Anchors, aliases and tags — `&base`, `*base`, `!tag` | Repeat the value |
+
+One-line flow collections are fine: `mcpToolDependencies: []` and `tools: [a, b]` both read correctly.
+
 ## Validate locally
 
 The repository uses Python 3.11 or newer and `uv` for development dependencies.

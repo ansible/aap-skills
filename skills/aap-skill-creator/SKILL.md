@@ -16,11 +16,11 @@ compatibility: Requires access to this repository's content type definition and 
 allowed-tools: ""
 metadata:
   author: Red Hat
-  version: "1.1.0"
+  version: "1.2.0"
 model: inherit
 color: cyan
 id: aap-skill-creator
-version: 1.1.0
+version: 1.2.0
 category: authoring
 mcpToolDependencies: []
 supportBoundary:
@@ -92,6 +92,24 @@ skill over either limit may refuse to load at all rather than degrade. Neither
 is near-binding for a documentation skill, but a reference set that grows
 without review, or a committed binary, will reach them. `make validate`
 rejects a skill over either one.
+
+Write frontmatter in block style: `- item` on its own line for lists, and a
+block scalar (`|` or `>-`) for text spanning lines. The server does not read
+`SKILL.md` with a general YAML parser. It uses a restricted reader covering the
+subset skills actually use and throws on anything outside it, because SEP-2640
+has the host re-parse the same bytes and compare field by field against the
+server's result, and any discrepancy is a load failure. Valid YAML can
+therefore still be unservable, and the failure is silent: a skill the server
+cannot read is skipped from the catalog entirely rather than degraded.
+
+| Do not write | Write instead |
+| --- | --- |
+| A flow collection spanning lines — `tools: [` with items below | A block sequence, `- item` per line |
+| A quoted value spanning lines | A block scalar, `\|` or `>-` |
+| Anchors, aliases or tags — `&base`, `*base`, `!tag` | Repeat the value |
+
+One-line flow collections are supported, so `mcpToolDependencies: []` and
+`tools: [a, b]` are both fine.
 
 The directory name carries identity. The server derives the final segment of
 the skill's URI from it, and SEP-2640 requires that segment to equal the
@@ -165,7 +183,7 @@ make validate
 
 Confirm that:
 
-- frontmatter parses and required fields are present;
+- frontmatter parses, uses block style, and required fields are present;
 - directory name matches `name` and `id`;
 - the skill is within the SEP-2640 limits of 512 files and 16 MiB, and every
   file in the directory is content meant to be published;

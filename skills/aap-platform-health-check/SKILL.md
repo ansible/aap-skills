@@ -23,7 +23,7 @@ allowed-tools: >-
   credentials_list me_list
 metadata:
   author: Red Hat
-  version: "1.1.0"
+  version: "1.1.1"
 
 # ─── Agent Runtime Hints ────────────────────────────────────────────────────
 model: inherit
@@ -31,7 +31,7 @@ color: cyan
 
 # ─── Red Hat Skill Fields ───────────────────────────────────────────────────
 id: aap-platform-health-check
-version: 1.1.0
+version: 1.1.1
 category: platform-operations
 
 # The AAP MCP Server is a single MCP server, named "aap". It exposes all tools at
@@ -40,21 +40,32 @@ category: platform-operations
 # serves a tool, but it is not part of the server's identity.
 mcpToolDependencies:
   - server: aap
-    tools: [
-            # system_monitoring
-            status_retrieve, mesh_visualizer_retrieve, instances_retrieve,
-            instance_groups_list, activity_stream_list, feature_flags_state_retrieve,
-            # platform_configuration
-            config_retrieve, execution_environments_list,
-            controller-settings_list, settings_retrieve, gateway-settings_list,
-            # job_management
-            jobs_list, projects_list, metrics_retrieve, activation_instances_list,
-            # inventory_management
-            inventories_list, hosts_list,
-            # security_compliance
-            credentials_list,
-            # user_management
-            me_list]
+    tools:
+      # system_monitoring
+      - status_retrieve
+      - mesh_visualizer_retrieve
+      - instances_retrieve
+      - instance_groups_list
+      - activity_stream_list
+      - feature_flags_state_retrieve
+      # platform_configuration
+      - config_retrieve
+      - execution_environments_list
+      - controller-settings_list
+      - settings_retrieve
+      - gateway-settings_list
+      # job_management
+      - jobs_list
+      - projects_list
+      - metrics_retrieve
+      - activation_instances_list
+      # inventory_management
+      - inventories_list
+      - hosts_list
+      # security_compliance
+      - credentials_list
+      # user_management
+      - me_list
 
 supportBoundary:
   model: red-hat
