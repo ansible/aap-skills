@@ -16,11 +16,11 @@ compatibility: Requires access to this repository's content type definition and 
 allowed-tools: ""
 metadata:
   author: Red Hat
-  version: "1.0.0"
+  version: "1.1.0"
 model: inherit
 color: cyan
 id: aap-skill-creator
-version: 1.0.0
+version: 1.1.0
 category: authoring
 mcpToolDependencies: []
 supportBoundary:
@@ -71,6 +71,35 @@ Use an existing skill as a structural reference, but copy only patterns that
 fit the new scope. Do not invent required fields, MCP tools, role names,
 thresholds, or product support claims.
 
+## How skills are served
+
+Every file in a skill directory is served by the AAP MCP Server as an
+individually addressable MCP resource under a `skill://` URI. A `references/`
+file is published content, not a working file: whatever sits in the directory
+ships. Keep scratch drafts, generated output, and anything not meant for a
+reader out of it.
+
+[SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) fixes
+two limits over that set of files:
+
+| Limit | Value | Counted over |
+| --- | --- | --- |
+| Resources per skill | 512 entries | Every file in the skill directory, `SKILL.md` included |
+| Total size per skill | 16 MiB (16,777,216 bytes) | The sum of those files' byte sizes |
+
+A conforming host is only required to load skills up to these values, so a
+skill over either limit may refuse to load at all rather than degrade. Neither
+is near-binding for a documentation skill, but a reference set that grows
+without review, or a committed binary, will reach them. `make validate`
+rejects a skill over either one.
+
+The directory name carries identity. The server derives the final segment of
+the skill's URI from it, and SEP-2640 requires that segment to equal the
+frontmatter `name`; a mismatch is a load failure on a conforming host, not a
+cosmetic inconsistency. That is why the directory name, `name`, and `id` must
+all agree, and why renaming a directory means editing frontmatter in the same
+change.
+
 ## MCP and access design
 
 - Use AAP MCP Server tools as the exclusive platform integration point.
@@ -99,6 +128,10 @@ Use `references/` for substantial or version-sensitive material, such as:
 - severity thresholds and advisory baselines
 - recommendation catalogs
 - external-source consultation rules
+
+Each of those files is published as its own MCP resource and counts against
+the per-skill limits above, so split material because a reader needs it
+separately, not to keep `SKILL.md` short by itself.
 
 Prefer authoritative Red Hat documentation for product behavior and lifecycle.
 State when authentication, an active subscription, SSO, a support case, TAM,
@@ -134,6 +167,8 @@ Confirm that:
 
 - frontmatter parses and required fields are present;
 - directory name matches `name` and `id`;
+- the skill is within the SEP-2640 limits of 512 files and 16 MiB, and every
+  file in the directory is content meant to be published;
 - version is semantic versioning;
 - internal Markdown links resolve;
 - declared dependencies reflect actual MCP calls;

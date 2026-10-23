@@ -8,9 +8,11 @@ Checks:
 - Required fields (agentskills.io + Red Hat Skill fields)
 - Field constraints (kebab-case, semver, etc.)
 - Description structure (Use when, NOT for)
+- SEP-2640 per-skill resource count and total size limits
 - Internal links
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -30,6 +32,16 @@ REQUIRED_RH_FIELDS = ['id', 'version', 'category', 'mcpToolDependencies', 'suppo
 
 # Valid SPDX license identifiers (common subset)
 VALID_LICENSES = ['Apache-2.0', 'MIT', 'GPL-3.0', 'BSD-3-Clause', 'ISC']
+
+# Per-skill limits fixed by SEP-2640. Hosts must support skills up to these
+# values; servers should not serve a skill that exceeds either one. A skill
+# over the limit is content that is not guaranteed to load on any conforming
+# host, so it is rejected here rather than published.
+MAX_RESOURCES_PER_SKILL = 512
+MAX_SKILL_BYTES = 16 * 1024 * 1024  # 16 MiB (16,777,216 bytes)
+
+# Every skill directory must carry the AAP prefix.
+SKILL_DIR_PREFIX = 'aap-'
 
 
 class ValidationError:
@@ -99,6 +111,56 @@ def validate_semver(value: str) -> bool:
     return bool(re.match(r'^\d+\.\d+\.\d+$', value))
 
 
+def collect_skill_files(skill_dir: Path) -> List[Path]:
+    """Every file the MCP server exposes as a resource for this skill.
+
+    SEP-2640 requires a skill's resource listing to be complete — every file in
+    the skill directory, SKILL.md included — so the per-skill limits are counted
+    over exactly this set. Symlinked directories are not followed: the server
+    does not serve outside the skill directory either, and following them here
+    would count files it will never expose.
+    """
+    files = []
+    for dirpath, dirnames, filenames in os.walk(skill_dir, followlinks=False):
+        dirnames.sort()
+        for filename in sorted(filenames):
+            files.append(Path(dirpath) / filename)
+    return files
+
+
+def validate_skill_limits(skill_dir: Path) -> List[ValidationError]:
+    """Check a skill against the SEP-2640 per-skill resource and size limits."""
+    errors = []
+    skill_md = skill_dir / 'SKILL.md'
+    files = collect_skill_files(skill_dir)
+
+    if len(files) > MAX_RESOURCES_PER_SKILL:
+        errors.append(ValidationError(
+            skill_md,
+            f"Exceeds the SEP-2640 resource limit: {len(files)} files, "
+            f"limit {MAX_RESOURCES_PER_SKILL}. Every file in the skill "
+            f"directory is exposed as a resource, SKILL.md included."))
+
+    total_bytes = 0
+    for skill_file in files:
+        try:
+            total_bytes += skill_file.stat().st_size
+        except OSError as e:
+            errors.append(ValidationError(
+                skill_md,
+                f"Cannot determine the size of "
+                f"{skill_file.relative_to(skill_dir)}: {e}"))
+
+    if total_bytes > MAX_SKILL_BYTES:
+        errors.append(ValidationError(
+            skill_md,
+            f"Exceeds the SEP-2640 total size limit: {total_bytes:,} bytes "
+            f"across {len(files)} file(s), limit {MAX_SKILL_BYTES:,} bytes "
+            f"(16 MiB)."))
+
+    return errors
+
+
 def validate_skill(skill_dir: Path) -> List[ValidationError]:
     """Validate a single skill directory."""
     errors = []
@@ -108,6 +170,18 @@ def validate_skill(skill_dir: Path) -> List[ValidationError]:
     if not skill_md.exists():
         errors.append(ValidationError(skill_md, "SKILL.md not found"))
         return errors
+
+    # Directory naming convention. Checked here rather than at discovery so a
+    # misnamed skill is reported instead of silently skipped.
+    if not skill_dir.name.startswith(SKILL_DIR_PREFIX):
+        errors.append(ValidationError(
+            skill_md,
+            f"Directory name '{skill_dir.name}' must start with "
+            f"'{SKILL_DIR_PREFIX}'"))
+
+    # SEP-2640 per-skill limits. Independent of front matter, so they run before
+    # parsing and are not short-circuited by a parse failure.
+    errors.extend(validate_skill_limits(skill_dir))
 
     # Parse front matter
     frontmatter, body, parse_errors = parse_skill_frontmatter(skill_md)
@@ -197,6 +271,18 @@ def validate_skill(skill_dir: Path) -> List[ValidationError]:
     return errors
 
 
+def discover_skill_dirs(skills_dir: Path) -> List[Path]:
+    """Every directory under skills/ that holds a SKILL.md.
+
+    Discovery is by content rather than by directory name. A skill whose
+    directory was renamed out of the 'aap-' convention must still be found, or
+    neither the naming check nor the directory-name/front-matter agreement
+    check can ever fire for it.
+    """
+    return sorted(d for d in skills_dir.iterdir()
+                  if d.is_dir() and (d / 'SKILL.md').is_file())
+
+
 def validate_docs_links(docs_dir: Path) -> List[ValidationError]:
     """Validate internal links within docs/ directory."""
     errors = []
@@ -238,8 +324,8 @@ def main():
         print(f"{RED}✗ skills/ directory not found{RESET}")
         return 1
 
-    # Find all skill directories (aap-*)
-    skill_dirs = sorted([d for d in skills_dir.iterdir() if d.is_dir() and d.name.startswith('aap-')])
+    # Find all skill directories
+    skill_dirs = discover_skill_dirs(skills_dir)
 
     if not skill_dirs:
         print(f"{YELLOW}⚠ No skills found in skills/ directory{RESET}")

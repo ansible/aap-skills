@@ -1,0 +1,238 @@
+"""Tests for scripts/validate_skills.py.
+
+Focused on the SEP-2640 per-skill limits and on skill identity — the directory
+name, the front matter `name`, and the `id` must all agree, because the final
+segment of the URI the MCP server derives is the directory name and SEP-2640
+makes a mismatch a load failure on a conforming host.
+"""
+
+from pathlib import Path
+
+import validate_skills
+
+SKILL_MD_TEMPLATE = """---
+name: {name}
+description: |
+  Example skill used by the validator test suite.
+
+  Use when: exercising validate_skills.py.
+
+  NOT for: real platform operations.
+license: Apache-2.0
+id: {skill_id}
+version: 1.0.0
+category: testing
+mcpToolDependencies: []
+supportBoundary:
+  model: validated
+---
+
+# Example
+
+Body text.
+"""
+
+
+def make_skill(parent: Path, name: str = 'aap-example', dirname: str = None,
+               skill_id: str = None) -> Path:
+    """Create a minimal skill that passes validation unless told otherwise."""
+    skill_dir = parent / (dirname or name)
+    skill_dir.mkdir(parents=True)
+    (skill_dir / 'SKILL.md').write_text(
+        SKILL_MD_TEMPLATE.format(name=name, skill_id=skill_id or name),
+        encoding='utf-8')
+    return skill_dir
+
+
+def add_files(skill_dir: Path, count: int) -> None:
+    """Add `count` empty files, so only the resource count moves."""
+    filler = skill_dir / 'filler'
+    filler.mkdir(exist_ok=True)
+    for i in range(count):
+        (filler / f'file-{i:04d}.md').touch()
+
+
+def pad_to(skill_dir: Path, total_bytes: int) -> None:
+    """Add one sparse file bringing the skill's total size to `total_bytes`."""
+    current = sum(f.stat().st_size
+                  for f in validate_skills.collect_skill_files(skill_dir))
+    with (skill_dir / 'padding.bin').open('wb') as f:
+        f.truncate(total_bytes - current)
+
+
+def messages(errors):
+    return [e.message for e in errors]
+
+
+def errors_only(errors):
+    return [e for e in errors if e.severity == 'error']
+
+
+# --- Resource count limit (512 entries) ------------------------------------
+
+def test_resource_count_at_the_limit_passes(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    add_files(skill_dir, validate_skills.MAX_RESOURCES_PER_SKILL - 1)
+
+    assert len(validate_skills.collect_skill_files(skill_dir)) == 512
+    assert validate_skills.validate_skill_limits(skill_dir) == []
+
+
+def test_resource_count_one_over_the_limit_fails(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    add_files(skill_dir, validate_skills.MAX_RESOURCES_PER_SKILL)
+
+    errors = validate_skills.validate_skill_limits(skill_dir)
+
+    assert len(errors) == 1
+    assert '513 files' in errors[0].message
+    assert 'limit 512' in errors[0].message
+
+
+def test_resource_count_error_names_the_skill(tmp_path):
+    skill_dir = make_skill(tmp_path, name='aap-oversized')
+    add_files(skill_dir, validate_skills.MAX_RESOURCES_PER_SKILL)
+
+    assert 'aap-oversized' in str(
+        validate_skills.validate_skill_limits(skill_dir)[0])
+
+
+# --- Total size limit (16 MiB) ---------------------------------------------
+
+def test_total_size_at_the_limit_passes(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    pad_to(skill_dir, validate_skills.MAX_SKILL_BYTES)
+
+    assert validate_skills.validate_skill_limits(skill_dir) == []
+
+
+def test_total_size_one_over_the_limit_fails(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    pad_to(skill_dir, validate_skills.MAX_SKILL_BYTES + 1)
+
+    errors = validate_skills.validate_skill_limits(skill_dir)
+
+    assert len(errors) == 1
+    assert '16,777,217 bytes' in errors[0].message
+    assert 'limit 16,777,216 bytes' in errors[0].message
+
+
+def test_total_size_error_names_the_skill(tmp_path):
+    skill_dir = make_skill(tmp_path, name='aap-oversized')
+    pad_to(skill_dir, validate_skills.MAX_SKILL_BYTES + 1)
+
+    assert 'aap-oversized' in str(
+        validate_skills.validate_skill_limits(skill_dir)[0])
+
+
+def test_limits_match_the_values_sep_2640_fixes():
+    assert validate_skills.MAX_RESOURCES_PER_SKILL == 512
+    assert validate_skills.MAX_SKILL_BYTES == 16_777_216
+
+
+# --- What counts as a resource ---------------------------------------------
+
+def test_collect_includes_skill_md_and_every_nested_file(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'references').mkdir()
+    (skill_dir / 'references' / 'a.md').write_text('a', encoding='utf-8')
+    (skill_dir / 'scripts').mkdir()
+    (skill_dir / 'scripts' / 'run.py').write_text('x', encoding='utf-8')
+
+    found = [p.relative_to(skill_dir).as_posix()
+             for p in validate_skills.collect_skill_files(skill_dir)]
+
+    assert found == ['SKILL.md', 'references/a.md', 'scripts/run.py']
+
+
+def test_collect_does_not_follow_symlinked_directories(tmp_path):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'secret.md').write_text('x', encoding='utf-8')
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'link').symlink_to(outside, target_is_directory=True)
+
+    found = [p.relative_to(skill_dir).as_posix()
+             for p in validate_skills.collect_skill_files(skill_dir)]
+
+    assert found == ['SKILL.md']
+
+
+def test_unreadable_file_is_reported_rather_than_crashing(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'broken.md').symlink_to(tmp_path / 'does-not-exist')
+
+    messages_ = messages(validate_skills.validate_skill_limits(skill_dir))
+
+    assert any('Cannot determine the size of broken.md' in m
+               for m in messages_)
+
+
+# --- Identity ---------------------------------------------------------------
+
+def test_valid_skill_has_no_errors(tmp_path):
+    assert validate_skills.validate_skill(make_skill(tmp_path)) == []
+
+
+def test_directory_name_must_match_front_matter_name(tmp_path):
+    skill_dir = make_skill(tmp_path, name='aap-example', dirname='aap-renamed')
+
+    assert any("Directory name 'aap-renamed' does not match name field "
+               "'aap-example'" in m
+               for m in messages(validate_skills.validate_skill(skill_dir)))
+
+
+def test_id_must_match_front_matter_name(tmp_path):
+    skill_dir = make_skill(tmp_path, name='aap-example',
+                           skill_id='aap-something-else')
+
+    assert any("id 'aap-something-else' must match name 'aap-example'" in m
+               for m in messages(validate_skills.validate_skill(skill_dir)))
+
+
+def test_directory_without_the_aap_prefix_fails(tmp_path):
+    skill_dir = make_skill(tmp_path, name='example', dirname='example')
+
+    assert any("Directory name 'example' must start with 'aap-'" in m
+               for m in messages(validate_skills.validate_skill(skill_dir)))
+
+
+# --- Discovery --------------------------------------------------------------
+
+def test_discovery_finds_a_skill_whose_directory_lost_the_prefix(tmp_path):
+    """A misnamed skill must be found, or the naming checks never fire."""
+    skills_dir = tmp_path / 'skills'
+    skills_dir.mkdir()
+    make_skill(skills_dir, name='aap-example')
+    make_skill(skills_dir, name='example', dirname='example')
+    (skills_dir / 'not-a-skill').mkdir()
+
+    found = validate_skills.discover_skill_dirs(skills_dir)
+
+    assert [d.name for d in found] == ['aap-example', 'example']
+
+
+# --- Ordering ---------------------------------------------------------------
+
+def test_limits_are_reported_even_when_front_matter_is_unparseable(tmp_path):
+    skill_dir = tmp_path / 'aap-example'
+    skill_dir.mkdir()
+    (skill_dir / 'SKILL.md').write_text('no front matter\n', encoding='utf-8')
+    add_files(skill_dir, validate_skills.MAX_RESOURCES_PER_SKILL)
+
+    messages_ = messages(validate_skills.validate_skill(skill_dir))
+
+    assert any('resource limit' in m for m in messages_)
+    assert any('front matter' in m for m in messages_)
+
+
+# --- The skills this repository actually publishes --------------------------
+
+def test_published_skills_pass_validation():
+    repo_root = Path(__file__).resolve().parent.parent
+    skill_dirs = validate_skills.discover_skill_dirs(repo_root / 'skills')
+
+    assert skill_dirs, 'no skills found under skills/'
+    for skill_dir in skill_dirs:
+        errors = errors_only(validate_skills.validate_skill(skill_dir))
+        assert errors == [], f"{skill_dir.name}: {messages(errors)}"

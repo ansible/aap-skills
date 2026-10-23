@@ -1,12 +1,13 @@
-.PHONY: help install validate validate-spelling clean check-uv
+.PHONY: help install validate validate-spelling test clean check-uv
 
 help:
 	@echo "aap-skills"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  install           - Install Python dependencies (requires uv)"
-	@echo "  validate          - Run all validation checks (skills + spelling)"
+	@echo "  validate          - Run all validation checks (skills + spelling + tests)"
 	@echo "  validate-spelling - Run codespell spell check"
+	@echo "  test              - Run the validator unit tests"
 	@echo "  clean             - Remove generated files"
 	@echo ""
 	@echo "Requirements:"
@@ -35,6 +36,8 @@ validate: check-uv
 	uv run python scripts/validate_skills.py || EXIT=1; \
 	echo "=== Running spell check..."; \
 	$(MAKE) validate-spelling || EXIT=1; \
+	echo "=== Running validator unit tests..."; \
+	$(MAKE) test || EXIT=1; \
 	echo ""; \
 	if [ $$EXIT -eq 0 ]; then \
 		echo "✅ All validations passed!"; \
@@ -47,6 +50,11 @@ validate-spelling: check-uv
 	@echo "Running spell check with codespell..."
 	@uv run codespell
 	@echo "✅ Spell check passed!"
+
+test: check-uv
+	@echo "Running validator unit tests with pytest..."
+	@uv run pytest -q
+	@echo "✅ Unit tests passed!"
 
 clean:
 	@echo "Cleaning generated files..."

@@ -63,9 +63,14 @@ aap-skills/
 │   └── aap-{skill-name}/
 │       ├── SKILL.md                   # Skill file (front matter + body)
 │       └── references/                # Supporting reference material
+├── scripts/
+│   └── validate_skills.py             # Content and SEP-2640 conformance checks
+├── tests/                             # Unit tests for the validator
 └── docs/
     └── content-type-definition.md     # Published content type specification
 ```
+
+Each skill directory is served over MCP as a set of individual resources, which [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) caps at 512 files and 16 MiB per skill. `make validate` enforces both. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
 
 ### Skill directory contents
 

@@ -33,3 +33,8 @@ jobs:
         run: |
           source $HOME/.cargo/env
           uv run python scripts/validate_skills.py
+
+      - name: Run validator unit tests
+        run: |
+          source $HOME/.cargo/env
+          uv run pytest -q
