@@ -327,6 +327,118 @@ tools: [
     assert validate_skills.validate_frontmatter_subset(skill_md) != []
 
 
+# --- Supporting-file references ---------------------------------------------
+
+def body(skill_dir: Path, markdown: str) -> None:
+    """Append body text to a skill's SKILL.md."""
+    skill_md = skill_dir / 'SKILL.md'
+    skill_md.write_text(skill_md.read_text(encoding='utf-8') + markdown,
+                        encoding='utf-8')
+
+
+def test_path_escaping_the_skill_directory_is_rejected(tmp_path):
+    """The original defect: content at the repository root is never served."""
+    skill_dir = make_skill(tmp_path)
+    body(skill_dir, 'Follow `../../context/output-format.md` for reports.\n')
+
+    errors = validate_skills.validate_skill_references(skill_dir)
+
+    assert len(errors) == 1
+    assert 'leaves the skill directory' in errors[0].message
+    assert 'SKILL.md:' in errors[0].message
+
+
+def test_markdown_link_to_a_local_file_is_rejected(tmp_path):
+    """A relative href is meaningless to a client reading over MCP."""
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'references').mkdir()
+    (skill_dir / 'references' / 'baselines.md').write_text('x',
+                                                           encoding='utf-8')
+    body(skill_dir, 'Follow [baselines](references/baselines.md).\n')
+
+    errors = validate_skills.validate_skill_references(skill_dir)
+
+    assert len(errors) == 1
+    assert 'Markdown link to the local path' in errors[0].message
+
+
+def test_markdown_link_to_a_url_or_anchor_is_accepted(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    body(skill_dir, '[SEP-2640](https://modelcontextprotocol.io/seps/2640)\n'
+                    '[a section](#description)\n'
+                    '[mail](mailto:someone@example.com)\n')
+
+    assert validate_skills.validate_skill_references(skill_dir) == []
+
+
+def test_backticked_path_from_the_skill_root_is_accepted(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'references').mkdir()
+    (skill_dir / 'references' / 'baselines.md').write_text('x',
+                                                           encoding='utf-8')
+    body(skill_dir, 'Read `references/baselines.md` for thresholds.\n'
+                    'The front matter lives in `SKILL.md`.\n')
+
+    assert validate_skills.validate_skill_references(skill_dir) == []
+
+
+def test_path_into_a_skill_subdirectory_must_exist(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'references').mkdir()
+    (skill_dir / 'references' / 'baselines.md').write_text('x',
+                                                           encoding='utf-8')
+    body(skill_dir, 'Read `references/typo.md` for thresholds.\n')
+
+    errors = validate_skills.validate_skill_references(skill_dir)
+
+    assert len(errors) == 1
+    assert "'references/typo.md' is not a file of this skill" \
+        in errors[0].message
+
+
+def test_an_example_path_in_prose_is_not_treated_as_a_citation(tmp_path):
+    """No 'reports/' directory, so this is prose, not a reference."""
+    skill_dir = make_skill(tmp_path)
+    body(skill_dir, 'Save as `reports/health-check_2026-04-12.md`.\n')
+
+    assert validate_skills.validate_skill_references(skill_dir) == []
+
+
+def test_sibling_reference_inside_references_is_rejected(tmp_path):
+    """Paths resolve from the skill root, not from the file citing them."""
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'references').mkdir()
+    (skill_dir / 'references' / 'baselines.md').write_text('x',
+                                                           encoding='utf-8')
+    (skill_dir / 'references' / 'sources.md').write_text(
+        'These override `baselines.md`.\n', encoding='utf-8')
+
+    errors = validate_skills.validate_skill_references(skill_dir)
+
+    assert len(errors) == 1
+    assert 'references/sources.md:1' in errors[0].message
+    assert "Write 'references/baselines.md'" in errors[0].message
+
+
+def test_synced_context_copies_are_not_held_to_the_citation_rules(tmp_path):
+    """scripts/sync_shared.py owns context/; it is validated at its source."""
+    skill_dir = make_skill(tmp_path)
+    (skill_dir / 'context').mkdir()
+    (skill_dir / 'context' / 'output-format.md').write_text(
+        'Save as `reports/example.md`. See [schema](./schema/x.json).\n',
+        encoding='utf-8')
+
+    assert validate_skills.validate_skill_references(skill_dir) == []
+
+
+def test_reference_check_runs_as_part_of_validate_skill(tmp_path):
+    skill_dir = make_skill(tmp_path)
+    body(skill_dir, 'Follow `../../context/output-format.md`.\n')
+
+    assert any('leaves the skill directory' in m
+               for m in messages(validate_skills.validate_skill(skill_dir)))
+
+
 # --- Discovery --------------------------------------------------------------
 
 def test_discovery_finds_a_skill_whose_directory_lost_the_prefix(tmp_path):

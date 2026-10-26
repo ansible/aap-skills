@@ -23,7 +23,7 @@ allowed-tools: >-
   credentials_list me_list
 metadata:
   author: Red Hat
-  version: "1.1.1"
+  version: "1.2.0"
 
 # ─── Agent Runtime Hints ────────────────────────────────────────────────────
 model: inherit
@@ -31,7 +31,7 @@ color: cyan
 
 # ─── Red Hat Skill Fields ───────────────────────────────────────────────────
 id: aap-platform-health-check
-version: 1.1.1
+version: 1.2.0
 category: platform-operations
 
 # The AAP MCP Server is a single MCP server, named "aap". It exposes all tools at
@@ -82,7 +82,7 @@ aapVersion: ">=2.5"
 
 # Platform Health Check & Diagnostics Report
 
-Follow [`context/output-format.md`](../../context/output-format.md) for report structure, Markdown formatting, save options, and the standard MCP quick reference and footer.
+Read `context/output-format.md` and follow it for report structure, Markdown formatting, save options, and the standard MCP quick reference and footer.
 
 ## Description
 

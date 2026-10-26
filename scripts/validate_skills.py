@@ -9,6 +9,7 @@ Checks:
 - Field constraints (kebab-case, semver, etc.)
 - Description structure (Use when, NOT for)
 - SEP-2640 per-skill resource count and total size limits
+- Supporting-file references resolve inside the skill, from the skill root
 - Internal links
 """
 
@@ -45,6 +46,24 @@ SKILL_DIR_PREFIX = 'aap-'
 
 # Front matter starts on line 2 of SKILL.md, after the opening '---'.
 FRONTMATTER_FIRST_LINE = 2
+
+# Content a skill writes itself, and so is responsible for citing correctly.
+# 'context/' is excluded: scripts/sync_shared.py owns it, the copies there are
+# validated at their source, and they are also read by people browsing the
+# repository, so their prose is not written to this convention.
+AUTHORED_DIRS = ('references',)
+
+# A Markdown link, capturing its target.
+MARKDOWN_LINK = re.compile(r'\[[^\]]*\]\(([^)\s]+)\)')
+
+# A target that does not name a file in the repository: an absolute URI
+# ('https:', 'mailto:') or a same-document anchor.
+NON_LOCAL_TARGET = re.compile(r'^(?:[a-z][a-z\d+.-]*:|#)', re.IGNORECASE)
+
+# A backticked token that cites a Markdown file this skill ships. The leading
+# '/' and './' or '../' runs are matched so that a path out of the skill is
+# caught rather than silently skipped as unrecognised prose.
+CITED_MARKDOWN = re.compile(r'`(/?(?:\.{1,2}/)*[\w][\w./-]*\.md)`')
 
 
 class ValidationError:
@@ -199,6 +218,106 @@ def validate_frontmatter_subset(skill_md: Path) -> List[ValidationError]:
     return errors
 
 
+def authored_markdown(skill_dir: Path) -> List[Path]:
+    """SKILL.md and the Markdown the skill itself wrote, in a stable order."""
+    files = [skill_dir / 'SKILL.md']
+    for name in AUTHORED_DIRS:
+        files.extend(sorted((skill_dir / name).rglob('*.md')))
+    return [f for f in files if f.is_file()]
+
+
+def validate_skill_references(skill_dir: Path) -> List[ValidationError]:
+    """Check that every supporting file a skill cites can actually be read.
+
+    Two rules, and they are independent — a reference has to satisfy both.
+
+    Location. A skill is served as a closed set of files. The MCP server
+    builds its catalog from the skill's own directory and SEP-2640 rejects an
+    entry listing a resource outside it, so a path that escapes the directory
+    has no URI at all. Symlinking out is not a way around this: the SDK's
+    filesystem adapter reports a symlink as unsupported and drops the whole
+    skill. Shared content must be copied in, which scripts/sync_shared.py
+    does.
+
+    Style. A client reads a file as `read(skill, ref)`, where `ref` is a path
+    relative to the skill's root. That resolution is against the root, not
+    against the file doing the citing, so a reference in references/x.md to a
+    sibling must still be written 'references/y.md'. A relative Markdown link
+    is worse than useless here: its target means nothing over MCP, and a
+    label that disagrees with it is exactly what makes a client construct a
+    URI of its own and miss.
+
+    A full 'skill://...' URI is not the answer either. The authority segment
+    comes from the server's deployment-time prefix, not from the skill, so a
+    URI written into content is wrong on any server configured differently.
+    """
+    errors = []
+
+    for md_file in authored_markdown(skill_dir):
+        where = md_file.relative_to(skill_dir).as_posix()
+        try:
+            lines = md_file.read_text(encoding='utf-8').splitlines()
+        except OSError:
+            continue  # reported by validate_skill_limits
+
+        for number, line in enumerate(lines, 1):
+            for target in MARKDOWN_LINK.findall(line):
+                if NON_LOCAL_TARGET.match(target):
+                    continue
+                errors.append(ValidationError(
+                    skill_dir / 'SKILL.md',
+                    f"{where}:{number}: Markdown link to the local path "
+                    f"'{target}'. A relative link does not resolve for a "
+                    f"client reading this skill over MCP. Cite the path "
+                    f"relative to the skill root in backticks instead."))
+
+            for cited in CITED_MARKDOWN.findall(line):
+                errors.extend(check_citation(skill_dir, where, number, cited))
+
+    return errors
+
+
+def check_citation(skill_dir: Path, where: str, number: int,
+                   cited: str) -> List[ValidationError]:
+    """Check one backticked Markdown path cited from inside a skill."""
+    skill_md = skill_dir / 'SKILL.md'
+    location = f"{where}:{number}"
+
+    if cited.startswith('/') or '..' in Path(cited).parts:
+        return [ValidationError(
+            skill_md,
+            f"{location}: '{cited}' leaves the skill directory. Nothing "
+            f"outside it is served over MCP, so no URI reaches that file. "
+            f"Copy the content into the skill — see "
+            f"scripts/sync_shared.py — and cite it from the skill root.")]
+
+    first = Path(cited).parts[0]
+    if first != cited:
+        # A path into one of the skill's own subdirectories must land on a
+        # file. Anything else is prose, such as an example report name.
+        if (skill_dir / first).is_dir() and not (skill_dir / cited).is_file():
+            return [ValidationError(
+                skill_md,
+                f"{location}: '{cited}' is not a file of this skill.")]
+        return []
+
+    if cited == 'SKILL.md':
+        return []
+
+    # A bare file name resolves against the skill root, not against the file
+    # citing it, so a sibling reference inside references/ silently misses.
+    matches = sorted(p.relative_to(skill_dir).as_posix()
+                     for p in skill_dir.rglob(cited) if p.is_file())
+    if matches and cited not in matches:
+        return [ValidationError(
+            skill_md,
+            f"{location}: '{cited}' resolves from the skill root, not from "
+            f"the file citing it, so it reaches nothing. Write "
+            f"'{matches[0]}'.")]
+
+    return []
+
+
 def collect_skill_files(skill_dir: Path) -> List[Path]:
     """Every file the MCP server exposes as a resource for this skill.
 
@@ -276,8 +395,13 @@ def validate_skill(skill_dir: Path) -> List[ValidationError]:
     # and accepts constructs that leave the skill unservable.
     errors.extend(validate_frontmatter_subset(skill_md))
 
+    # Supporting files the skill points a client at. Also independent of front
+    # matter, and the failure it catches is silent at runtime: the client gets
+    # a resource-not-found for a file that was never servable.
+    errors.extend(validate_skill_references(skill_dir))
+
     # Parse front matter
-    frontmatter, body, parse_errors = parse_skill_frontmatter(skill_md)
+    frontmatter, _body, parse_errors = parse_skill_frontmatter(skill_md)
     errors.extend(parse_errors)
     if parse_errors:
         return errors  # Can't continue validation without valid front matter
@@ -350,16 +474,6 @@ def validate_skill(skill_dir: Path) -> List[ValidationError]:
         else:
             if 'model' not in sb:
                 errors.append(ValidationError(skill_md, "supportBoundary missing 'model' field"))
-
-    # Validate internal references/ links in body
-    references_dir = skill_dir / 'references'
-    if references_dir.exists():
-        # Find markdown links to references/
-        ref_links = re.findall(r'\[.*?\]\((references/[^)]+)\)', body)
-        for link in ref_links:
-            link_path = skill_dir / link
-            if not link_path.exists():
-                errors.append(ValidationError(skill_md, f"Broken link: {link} does not exist"))
 
     return errors
 

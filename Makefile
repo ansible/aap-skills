@@ -1,12 +1,14 @@
-.PHONY: help install validate validate-spelling test clean check-uv
+.PHONY: help install validate validate-spelling validate-shared sync-shared test clean check-uv
 
 help:
 	@echo "aap-skills"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  install           - Install Python dependencies (requires uv)"
-	@echo "  validate          - Run all validation checks (skills + spelling + tests)"
+	@echo "  validate          - Run all validation checks (skills + shared + spelling + tests)"
 	@echo "  validate-spelling - Run codespell spell check"
+	@echo "  validate-shared   - Check each skill's context/ copy against its source"
+	@echo "  sync-shared       - Copy shared content into the skills that use it"
 	@echo "  test              - Run the validator unit tests"
 	@echo "  clean             - Remove generated files"
 	@echo ""
@@ -34,6 +36,8 @@ validate: check-uv
 	echo ""; \
 	echo "=== Validating AAP skills..."; \
 	uv run python scripts/validate_skills.py || EXIT=1; \
+	echo "=== Checking shared content is in sync..."; \
+	$(MAKE) validate-shared || EXIT=1; \
 	echo "=== Running spell check..."; \
 	$(MAKE) validate-spelling || EXIT=1; \
 	echo "=== Running validator unit tests..."; \
@@ -50,6 +54,12 @@ validate-spelling: check-uv
 	@echo "Running spell check with codespell..."
 	@uv run codespell
 	@echo "✅ Spell check passed!"
+
+validate-shared: check-uv
+	@uv run python scripts/sync_shared.py --check
+
+sync-shared: check-uv
+	@uv run python scripts/sync_shared.py
 
 test: check-uv
 	@echo "Running validator unit tests with pytest..."

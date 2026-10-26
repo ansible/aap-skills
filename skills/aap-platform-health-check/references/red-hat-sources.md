@@ -7,7 +7,7 @@ Before applying any baseline or threshold in Step 3:
 1. Attempt to fetch each official source URL below
 2. **If accessible:** Extract current thresholds, lifecycle dates, support
    matrices, and version-specific guidance. These take precedence over
-   baked-in values in SKILL.md or `advisory-baselines.md`.
+   baked-in values in `SKILL.md` or `references/advisory-baselines.md`.
 3. **If inaccessible:** Fall back to baked-in rules and add to report header:
    ```
    ⚠ Offline Assessment — official Red Hat documentation was not accessible

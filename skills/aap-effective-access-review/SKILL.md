@@ -22,11 +22,11 @@ allowed-tools: >-
   activity_stream_list
 metadata:
   author: Red Hat
-  version: "1.0.0"
+  version: "1.1.0"
 model: inherit
 color: cyan
 id: aap-effective-access-review
-version: 1.0.0
+version: 1.1.0
 category: identity-access
 mcpToolDependencies:
   - server: aap
@@ -196,8 +196,8 @@ semantics are complete for the stated scope. Do not launch a job to test access.
 
 ### 6. Report
 
-Follow [`context/output-format.md`](../../context/output-format.md) for report
-structure, MCP quick reference, and standard footer. Include:
+Read `context/output-format.md` and follow it for report structure, MCP quick
+reference, and standard footer. Include:
 
 1. Executive answer.
 2. Target and AAP instance hostname/IP.

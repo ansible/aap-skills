@@ -62,22 +62,29 @@ aap-skills/
 ├── skills/
 │   └── aap-{skill-name}/
 │       ├── SKILL.md                   # Skill file (front matter + body)
+│       ├── context/                   # Synced copies of shared content
 │       └── references/                # Supporting reference material
+├── context/
+│   └── output-format.md               # Shared report standard (source of truth)
 ├── scripts/
-│   └── validate_skills.py             # Content and SEP-2640 conformance checks
+│   ├── validate_skills.py             # Content and SEP-2640 conformance checks
+│   └── sync_shared.py                 # Copies shared content into the skills
 ├── tests/                             # Unit tests for the validator
 └── docs/
     └── content-type-definition.md     # Published content type specification
 ```
 
-Each skill directory is served over MCP as a set of individual resources, which [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) caps at 512 files and 16 MiB per skill. `make validate` enforces both. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
+Each skill directory is served over MCP as a set of individual resources, which [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) caps at 512 files and 16 MiB per skill. `make validate` enforces both.
+
+A skill can read only the files inside its own directory — nothing outside it is served, and a symlink out drops the whole skill from the catalog. Shared content is therefore copied in by `make sync-shared`, with the repository-root file as the single source of truth and CI failing on drift. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
 
 ### Skill directory contents
 
 Each skill directory contains:
 
 - **`SKILL.md`** — Portable knowledge layer. Contains everything an AI model needs to execute the skill: description, prerequisites, MCP tools, workflow steps, constraints, expected outputs. Works on Claude Code, Copilot, Gemini CLI, Cursor, ChatGPT.
-- **`references/`** — Reference content split out to keep SKILL.md lean (threshold tables, source URL lists, compatibility matrices). Loaded by agents on demand during workflow execution.
+- **`context/`** — Generated copies of shared repository content, kept identical to their source by `make sync-shared`. Do not edit these by hand.
+- **`references/`** — Reference content the skill wrote itself, split out to keep SKILL.md lean (threshold tables, source URL lists, compatibility matrices). Loaded by agents on demand during workflow execution.
 
 ## Distribution
 

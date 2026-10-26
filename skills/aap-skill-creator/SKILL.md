@@ -16,11 +16,11 @@ compatibility: Requires access to this repository's content type definition and 
 allowed-tools: ""
 metadata:
   author: Red Hat
-  version: "1.2.0"
+  version: "1.3.0"
 model: inherit
 color: cyan
 id: aap-skill-creator
-version: 1.2.0
+version: 1.3.0
 category: authoring
 mcpToolDependencies: []
 supportBoundary:
@@ -58,9 +58,8 @@ skill rule.
 
 ## Repository contract
 
-Follow [`docs/content-type-definition.md`](../../docs/content-type-definition.md)
-for frontmatter and body requirements. For AAP platform skills, preserve the
-three layers:
+Read `context/content-type-definition.md` and follow it for frontmatter and
+body requirements. For AAP platform skills, preserve the three layers:
 
 1. **agentskills.io:** `name`, `description`, `license`, and optional runtime fields.
 2. **Red Hat skill:** `id`, semantic `version`, `category`,
@@ -118,6 +117,43 @@ cosmetic inconsistency. That is why the directory name, `name`, and `id` must
 all agree, and why renaming a directory means editing frontmatter in the same
 change.
 
+## Supporting files a skill reads
+
+A skill can read only the files inside its own directory. The server builds
+its catalog from that directory, and SEP-2640 rejects an entry listing a
+resource outside it, so a path to the repository root resolves to no URI at
+all: a client asking for it gets a resource-not-found for something that was
+never served. Symlinking out is not a way around this — the SDK's filesystem
+adapter reports a symlink as unsupported and drops the whole skill from the
+catalog, so the skill disappears rather than the link failing.
+
+Shared content is therefore copied into each skill that uses it, and the copy
+is generated. `scripts/sync_shared.py` keeps it identical to its source at the
+repository root, and `make validate` fails if the two have drifted. A skill
+opts in by having the destination file; `make sync-shared` fills it.
+
+| Directory | Holds | Edit by hand? |
+| --- | --- | --- |
+| `context/` | A synced copy of shared repository content | No — change the source and re-sync |
+| `references/` | Material this skill wrote | Yes |
+
+Cite a supporting file as a backticked path **from the skill root**, inside an
+imperative the workflow actually reaches. A client reads a file as
+`read(skill, ref)` where `ref` is relative to the skill root, so the same
+spelling is used no matter which file does the citing: a reference in
+`references/<one>.md` to a sibling is still `references/<other>.md`.
+
+| Do not write | Write instead |
+| --- | --- |
+| A Markdown link to a local file, of any depth | A backticked path — a relative link target means nothing over MCP, and a label that disagrees with it is what makes a client guess a URI |
+| A path climbing out with `../` | A copy inside the skill, cited from the skill root |
+| A full `skill://` URI | A skill-root-relative path — the authority segment is a server deployment setting, not part of the skill |
+| A bare `<name>.md` cited from inside `references/` | `references/<name>.md` |
+
+Citation style and file location are separate conditions and both must hold.
+A file in the right place but cited as a relative link is not read; a file
+cited correctly but living outside the directory cannot be read.
+
 ## MCP and access design
 
 - Use AAP MCP Server tools as the exclusive platform integration point.
@@ -149,7 +185,8 @@ Use `references/` for substantial or version-sensitive material, such as:
 
 Each of those files is published as its own MCP resource and counts against
 the per-skill limits above, so split material because a reader needs it
-separately, not to keep `SKILL.md` short by itself.
+separately, not to keep `SKILL.md` short by itself. Put them in `references/`,
+inside the skill — content outside the skill directory is not served.
 
 Prefer authoritative Red Hat documentation for product behavior and lifecycle.
 State when authentication, an active subscription, SSO, a support case, TAM,
@@ -166,11 +203,10 @@ Write the workflow as observable steps:
 4. Classify limitations and confidence.
 5. Produce the expected output with evidence and recommendations.
 
-For report-generating skills, follow
-[`context/output-format.md`](../../context/output-format.md). Include the
-standard MCP quick reference when tools were called and the standard footer.
-For write or destructive skills, include preview, explicit confirmation, and
-RBAC enforcement gates.
+For report-generating skills, read `context/output-format.md` and have the new
+skill follow it. Include the standard MCP quick reference when tools were
+called and the standard footer. For write or destructive skills, include
+preview, explicit confirmation, and RBAC enforcement gates.
 
 ## Validation gate
 
@@ -178,6 +214,7 @@ Before handoff:
 
 ```bash
 make install
+make sync-shared
 make validate
 ```
 
@@ -185,6 +222,10 @@ Confirm that:
 
 - frontmatter parses, uses block style, and required fields are present;
 - directory name matches `name` and `id`;
+- every supporting file the skill cites lives inside the skill directory and
+  is cited as a backticked path from the skill root, with no Markdown link to
+  a local file and no `skill://` URI;
+- any `context/` copy is in sync with its repository-root source;
 - the skill is within the SEP-2640 limits of 512 files and 16 MiB, and every
   file in the directory is content meant to be published;
 - version is semantic versioning;

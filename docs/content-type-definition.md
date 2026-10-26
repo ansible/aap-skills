@@ -354,11 +354,62 @@ A conversational example showing the user trigger and the agent's response. Help
 ```
 <skill-name>/
 ├── SKILL.md              # Core skill (≤500 lines)
+├── context/              # Synced copies of shared repository content
+│   └── output-format.md
 ├── references/           # Loaded by agents on demand
 │   ├── baselines.md
 │   └── sources.md
 └── scripts/              # Optional executable code
 ```
+
+---
+
+
+
+### 3.4 Supporting Files: Location and Citation
+
+A skill is served as a **closed set of files**. The MCP server builds its catalog from the skill's own directory, and SEP-2640 rejects a skill entry that lists a resource outside it. A file elsewhere in the repository has no URI at all — it is not hard to reach, it is not served.
+
+Two conditions govern whether a client can read a supporting file, and **both must hold**. A file in the right place but cited the wrong way is never requested; a file cited correctly but living in the wrong place cannot be returned.
+
+#### 3.4.1 Location — inside the skill directory
+
+Every file a skill reads lives under the skill's own directory.
+
+| Approach | Status |
+| -------- | ------ |
+| File inside the skill directory | **Required.** The only arrangement that is served. |
+| Path escaping the directory (`../../context/output-format.md`) | **Not servable.** No URI reaches it; the client receives a resource-not-found. |
+| Symlink into the skill directory | **Ruled out, and worse than a broken link.** The SDK's filesystem adapter reports a symlink as an unsupported entry and the catalog drops the *entire skill*: `symlinks and other special files are not followed; copy the file instead (skill skipped)`. |
+| Shared file served as its own skill | **Rejected.** A generic `resources/read` succeeds, but a host verifying through the skills extension refuses it — the file is not listed in the citing skill's entry — so behavior differs by client. It also appears in `skills/list` as though it were an operational capability. |
+
+Shared content is therefore **copied into each skill that uses it**. The copy is generated, not maintained: the repository-root file is the single source of truth, `scripts/sync_shared.py` writes the copies, and CI fails on drift. A skill opts in by having the destination file.
+
+| Directory | Holds | Edited by hand |
+| --------- | ----- | -------------- |
+| `context/` | A synced copy of shared repository content | No — change the source and re-sync |
+| `references/` | Material the skill wrote itself | Yes |
+
+The duplication is deliberate. At roughly 10 KiB per copy against a 16 MiB per-skill budget the cost is negligible, and mechanical syncing removes the only real risk, which is silent drift.
+
+#### 3.4.2 Citation — a backticked path from the skill root
+
+A client reads a supporting file as `read(skill, ref)`, where `ref` is a path **relative to the skill's root**. Write exactly that path, in backticks, inside an imperative the workflow reaches:
+
+```markdown
+Read `context/output-format.md` and follow it for report structure.
+Read `references/<topic>.md` for the severity thresholds.
+```
+
+Resolution is against the skill root, never against the file doing the citing. A reference inside `references/<one>.md` to a sibling is still written `references/<other>.md`.
+
+| Do not write | Reason |
+| ------------ | ------ |
+| A Markdown link to a local file | The relative target means nothing to a client reading over MCP. When the label and the target disagree, a client builds a URI from the label and misses. |
+| A full `skill://…` URI | The authority segment comes from the server's deployment-time prefix, not from the skill. The same tree served with a different prefix yields different URIs, so a URI written into content is wrong on any server configured differently. |
+| A bare file name from inside a subdirectory | It resolves from the skill root and reaches nothing. |
+
+Prose alone is not a citation either: a file named only under a "Reference Sources" heading is not read, while the same file named in an imperative inside a numbered workflow step is.
 
 ---
 
@@ -445,6 +496,8 @@ A valid Ansible Skill passes:
 1. **agentskills.io linter** (`skills-ref validate`) — base format compliance (name, description, directory name match)
 2. **Red Hat Skill field check** — `id`, `version`, `category`, `mcpToolDependencies`, `supportBoundary` present and well-formed
 3. **MCP tool reference check** — every tool in `mcpToolDependencies` exists on the declared MCP server
+4. **Supporting-file reference check** (§3.4) — no cited path escapes the skill directory, no Markdown link points at a local file, and every cited path resolves from the skill root
+5. **Shared-content sync check** — each `context/` copy is identical to its repository-root source
 
 
 

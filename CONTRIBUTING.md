@@ -19,7 +19,7 @@ Thank you for contributing to AAP Skills for Ansible Automation Platform.
    - AAP operational fields, including `riskLevel` and `aapVersion`.
 5. Declare every MCP tool used by the skill in `mcpToolDependencies`. Keep `allowed-tools` consistent when it is present.
 6. Default platform operations to read-only. Write or destructive workflows need explicit user confirmation, clear impact details, and RBAC enforcement.
-7. Put substantial, version-sensitive material in a skill `references/` directory. Keep links relative and verify them locally.
+7. Put substantial, version-sensitive material in a skill `references/` directory, inside the skill. Cite it as a backticked path from the skill root — see [Supporting files](#supporting-files).
 8. For report-generating skills, follow [`context/output-format.md`](context/output-format.md), including the MCP quick reference and standard footer.
 
 ## Per-skill limits
@@ -32,6 +32,42 @@ Every file in a skill directory is served as an individual MCP resource, and [SE
 | Total size per skill | 16 MiB (16,777,216 bytes) | The sum of those files' byte sizes |
 
 A conforming host is only required to load skills up to these values, so a skill over either one may simply refuse to load. `make validate` rejects it before it reaches a release.
+
+## Supporting files
+
+A skill is served as a closed set of files: the MCP server builds its catalog from the skill's own directory, and [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) rejects an entry that lists a resource outside it. A file elsewhere in the repository has no URI at all, so a client asking for it gets a resource-not-found for something that was never served. Symlinking out is not an alternative — the SDK reports a symlink as an unsupported entry and drops the whole skill from the catalog.
+
+Two conditions govern whether a supporting file can be read, and both must hold.
+
+**Location.** The file lives inside the skill directory. Shared content is copied in, and the copy is generated rather than maintained:
+
+```bash
+make sync-shared     # write the copies
+make validate        # fails if a copy has drifted from its source
+```
+
+The repository-root file is the single source of truth. A skill opts in by having the destination file under its own `context/`.
+
+| Directory | Holds | Edit by hand |
+|-----------|-------|--------------|
+| `context/` | A synced copy of shared repository content | No — change the source and re-sync |
+| `references/` | Material the skill wrote itself | Yes |
+
+**Citation.** A client reads a file as `read(skill, ref)` where `ref` is relative to the skill's root, so write exactly that path, in backticks, inside an imperative the workflow reaches:
+
+```markdown
+Read `context/output-format.md` and follow it for report structure.
+```
+
+Resolution is against the skill root, never against the file doing the citing — a reference inside `references/<one>.md` to a sibling is still `references/<other>.md`.
+
+| Do not write | Reason |
+|--------------|--------|
+| A Markdown link to a local file | The relative target means nothing over MCP, and when the label and target disagree a client builds a URI from the label and misses |
+| A full `skill://…` URI | The authority segment is the server's deployment-time prefix, not part of the skill, so the URI is wrong on a server configured differently |
+| A bare file name cited from inside a subdirectory | It resolves from the skill root and reaches nothing |
+
+`make validate` rejects all three.
 
 ## Front matter style
 
@@ -58,10 +94,11 @@ make install
 make validate
 ```
 
-`make validate` runs the skill validator, codespell, and the validator's own unit tests. To run a single part:
+`make validate` runs the skill validator, the shared-content sync check, codespell, and the validator's own unit tests. To run a single part:
 
 ```bash
 make validate-spelling   # codespell only
+make validate-shared     # shared-content sync check only
 make test                # validator unit tests only
 ```
 
