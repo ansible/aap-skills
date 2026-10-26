@@ -12,7 +12,8 @@ Thank you for contributing to AAP Skills for Ansible Automation Platform.
 
 1. Fork `ansible/aap-skills` and create a focused feature branch from `main`.
 2. Add or update content under the appropriate repository path.
-3. Keep each skill in `skills/aap-<kebab-case-name>/SKILL.md`. The directory name, the frontmatter `name`, and the frontmatter `id` must all match. The MCP server derives the final segment of a skill's `skill://` URI from the directory name, and SEP-2640 makes a mismatch between that segment and the frontmatter `name` a load failure on a conforming host.
+3. Keep each customer-facing skill in `skills/aap-<kebab-case-name>/SKILL.md`. The directory name, the frontmatter `name`, and the frontmatter `id` must all match. The MCP server derives the final segment of a skill's `skill://` URI from the directory name, and SEP-2640 makes a mismatch between that segment and the frontmatter `name` a load failure on a conforming host.
+   - **Note:** Development tooling skills (like `aap-skill-creator`) belong in `dev-tools/skills/` and are not served via MCP to customers.
 4. For an AAP platform skill, follow the three-layer frontmatter defined in the content type specification:
    - agentskills.io base fields, including `name`, `description`, and `license`.
    - Red Hat skill fields, including `id`, `version`, `category`, `mcpToolDependencies`, and `supportBoundary`.

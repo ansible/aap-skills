@@ -29,7 +29,7 @@ AAP Skills are structured knowledge packages that enable AI agents to perform AA
 
 | Skill | Purpose |
 |---|---|
-| [AAP Skill Creator](skills/aap-skill-creator/SKILL.md) | Create and validate skills for this repository |
+| [AAP Skill Creator](dev-tools/skills/aap-skill-creator/SKILL.md) | Create and validate skills for this repository |
 
 ## Content Type Definition
 
@@ -59,10 +59,13 @@ Skills require the AAP MCP Server to function. All platform operations go throug
 aap-skills/
 ├── README.md
 ├── LICENSE                            # Apache 2.0
-├── skills/
+├── skills/                            # Customer-facing skills (served via MCP)
 │   └── aap-{skill-name}/
 │       ├── SKILL.md                   # Skill file (front matter + body)
 │       └── references/                # Supporting reference material
+├── dev-tools/                         # Development tooling (not served via MCP)
+│   └── skills/
+│       └── aap-skill-creator/         # Skill authoring and validation guidance
 ├── scripts/
 │   └── validate_skills.py             # Content and SEP-2640 conformance checks
 ├── tests/                             # Unit tests for the validator

@@ -58,7 +58,7 @@ skill rule.
 
 ## Repository contract
 
-Follow [`docs/content-type-definition.md`](../../docs/content-type-definition.md)
+Follow [`docs/content-type-definition.md`](../../../docs/content-type-definition.md)
 for frontmatter and body requirements. For AAP platform skills, preserve the
 three layers:
 
@@ -167,7 +167,7 @@ Write the workflow as observable steps:
 5. Produce the expected output with evidence and recommendations.
 
 For report-generating skills, follow
-[`context/output-format.md`](../../context/output-format.md). Include the
+[`context/output-format.md`](../../../context/output-format.md). Include the
 standard MCP quick reference when tools were called and the standard footer.
 For write or destructive skills, include preview, explicit confirmation, and
 RBAC enforcement gates.
