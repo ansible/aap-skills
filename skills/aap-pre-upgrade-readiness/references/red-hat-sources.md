@@ -7,7 +7,7 @@ Before Step 3 (Assess Upgrade Readiness):
 1. Attempt to fetch each official source URL below
 2. **If accessible:** Extract current upgrade paths, prerequisites,
    deprecated features, auth migration requirements, and topology changes
-3. **If inaccessible:** Fall back to baked-in rules in `upgrade-matrices.md`
+3. **If inaccessible:** Fall back to baked-in rules in `references/upgrade-matrices.md`
    and flag report as "offline assessment":
    ```
    ⚠ Offline Assessment — official Red Hat documentation was not accessible
@@ -43,7 +43,7 @@ Before Step 3 (Assess Upgrade Readiness):
 
 ## Advisory Baselines (Fallback Only)
 
-The following items in `upgrade-matrices.md` are advisory (NOT published by Red Hat):
+The following items in `references/upgrade-matrices.md` are advisory (NOT published by Red Hat):
 - Custom content risk thresholds (0/1-5/6-20/20+ items)
 - Operational readiness checks (running jobs, active schedules)
 - Contextual risk correlations (cross-dimension risk scoring)

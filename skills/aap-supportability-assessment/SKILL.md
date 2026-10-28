@@ -92,6 +92,8 @@ aapVersion: ">=2.5"
 
 # Assess Platform Supportability State
 
+Follow [`context/output-format.md`](../../context/output-format.md) for report structure, Markdown formatting, save options, and the standard MCP quick reference and footer.
+
 ## Description
 
 Scan the entire AAP platform configuration and classify every component: **Supported / Partially Supported / Unsupported**. Flag community collections vs. certified, custom EEs with unknown base images, custom credential types, deprecated settings, and unsupported authentication backends.

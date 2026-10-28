@@ -68,6 +68,8 @@ aapVersion: ">=2.5"
 
 # Validate Deployment Topology Against Supported Architectures
 
+Follow [`context/output-format.md`](../../context/output-format.md) for report structure, Markdown formatting, save options, and the standard MCP quick reference and footer.
+
 ## Description
 
 Validate the current AAP deployment topology against Red Hat's published tested deployment models from the AAP Planning Guide. Identify node types (control, execution, hop, hybrid), instance group configuration and capacity, mesh topology and receptor network, HA configuration, and whether the topology matches a documented reference architecture.

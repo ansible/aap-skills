@@ -86,6 +86,8 @@ aapVersion: ">=2.5"
 
 # Pre-Upgrade Readiness Check
 
+Follow [`context/output-format.md`](../../context/output-format.md) for report structure, Markdown formatting, save options, and the standard MCP quick reference and footer.
+
 ## Description
 
 Assess platform readiness for upgrade to a target AAP version. Performs a comprehensive pre-upgrade analysis across every dimension that can cause an upgrade to fail or produce unexpected results: upgrade path validity, deprecated settings, EE compatibility, credential types, authentication backends, topology compatibility, and custom content risk.
