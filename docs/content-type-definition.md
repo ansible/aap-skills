@@ -7,6 +7,7 @@
 An **Ansible Skill** is a `SKILL.md` file with YAML front matter and a structured markdown body. A single file serves all distribution paths, such as:
 
 - **Skills over MCP** — an MCP Server parses front matter, serves the file as an MCP Resource at `skill://ansible/{id}`
+- **AAP product image** — the product skill set ships inside the aap-mcp-server container; in this repository those skills live under `skills/aap-mcp-server/`
 - **Lightforge / Compass** — the agentskills.io linter validates base fields, Lightforge publishes to external marketplaces, Compass registers the skill as `kind: AiResource`
 - **External agents** — Claude Code, Copilot, and other AI agents consume the file directly
 
@@ -470,7 +471,7 @@ The machine-readable validation schema lives at `[schema/aap-skill-v1.schema.jso
 **Usage:**
 
 ```bash
-yq --front-matter=extract '.' skills/platform-health-check/SKILL.md \
+yq --front-matter=extract '.' skills/aap-mcp-server/aap-platform-health-check/SKILL.md \
   | npx ajv validate -s schema/aap-skill-v1.schema.json --strict=false -d /dev/stdin
 ```
 
@@ -484,9 +485,11 @@ yq --front-matter=extract '.' skills/platform-health-check/SKILL.md \
 
 ### 5.1 AAP Operational Skill (Read-Only)
 
+The example below follows `aap-platform-health-check`, shipped from `skills/aap-mcp-server/aap-platform-health-check/` in this repository. Fields are abbreviated for illustration.
+
 ```yaml
 ---
-name: platform-health-check
+name: aap-platform-health-check
 description: |
   Run comprehensive health checks across all AAP components and produce
   an actionable diagnostics report with correlated analysis.
@@ -503,7 +506,7 @@ compatibility: Requires the AAP MCP Server for Ansible Automation Platform 2.5+
 model: inherit
 color: cyan
 
-id: platform-health-check
+id: aap-platform-health-check
 version: 1.0.0
 category: platform-operations
 
