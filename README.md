@@ -14,21 +14,27 @@ AAP Skills are structured knowledge packages that enable AI agents to perform AA
 
 ## Skills
 
+Skills live under `skills/` in two places, and the location is the product boundary: the skills inside `skills/aap-mcp-server/` are the set that ships inside the aap-mcp-server container image, while skills directly under `skills/` are published by this repository but are not part of that image.
+
 ### Platform operations (read-only)
 
 | # | Skill | Risk | MCP | Notes |
 |---|-------|------|-----|-------|
-| 1 | [Platform Health Check](skills/aap-platform-health-check/SKILL.md) | Low (read-only) | Core/Full modes | Service status, mesh topology, capacity, license, EEs, queue depth |
+| 1 | [Platform Health Check](skills/aap-mcp-server/aap-platform-health-check/SKILL.md) | Low (read-only) | Core/Full modes | Service status, mesh topology, capacity, license, EEs, queue depth |
+| 2 | [Pre-Upgrade Readiness](skills/aap-mcp-server/aap-pre-upgrade-readiness/SKILL.md) | Low (read-only) | Full | Upgrade path validity, deprecated features, EE compatibility, authentication backends, topology support |
+| 3 | [Supportability Assessment](skills/aap-mcp-server/aap-supportability-assessment/SKILL.md) | Low (read-only) | Full | Classifies every platform component as Supported / Partially Supported / Unsupported against the Red Hat support matrix |
+| 4 | [Validate Deployment Topology](skills/aap-mcp-server/aap-validate-deployment-topology/SKILL.md) | Low (read-only) | Full | Node types, mesh topology, instance groups and HA configuration checked against Red Hat's tested deployment models |
 
 ### Identity and access (read-only)
 
 | Skill | Risk | MCP | Notes |
 |---|---|---|---|
 | [Effective Access Review](skills/aap-effective-access-review/SKILL.md) | Sensitive read-only | Full | User/team effective RBAC access and capability review |
+
 ### Skill development
 
 | Skill | Purpose |
-|---|---|
+|---|---------|
 | [AAP Skill Creator](dev-tools/skills/aap-skill-creator/SKILL.md) | Create and validate skills for this repository |
 
 ## Content Type Definition
@@ -59,10 +65,14 @@ Skills require the AAP MCP Server to function. All platform operations go throug
 aap-skills/
 ├── README.md
 ├── LICENSE                            # Apache 2.0
-├── skills/                            # Customer-facing skills (served via MCP)
-│   └── aap-{skill-name}/
-│       ├── SKILL.md                   # Skill file (front matter + body)
-│       └── references/                # Supporting reference material
+├── skills/                            # Published skills (served via MCP)
+│   ├── aap-{skill-name}/              # Not shipped in the product image
+│   │   ├── SKILL.md                   # Skill file (front matter + body)
+│   │   └── references/                # Supporting reference material
+│   └── aap-mcp-server/                # Product skills — shipped in the
+│       └── aap-{skill-name}/          # aap-mcp-server container image
+│           ├── SKILL.md               # Skill file (front matter + body)
+│           └── references/            # Supporting reference material
 ├── dev-tools/                         # Development tooling (not served via MCP)
 │   └── skills/
 │       └── aap-skill-creator/         # Skill authoring and validation guidance
@@ -73,7 +83,7 @@ aap-skills/
     └── content-type-definition.md     # Published content type specification
 ```
 
-Each skill directory is served over MCP as a set of individual resources, which [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) caps at 512 files and 16 MiB per skill. `make validate` enforces both. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
+Each skill directory is served over MCP as a set of individual resources, which [SEP-2640](https://modelcontextprotocol.io/seps/2640-skills-extension) caps at 512 files and 16 MiB per skill. `make validate` enforces both, over `skills/` and `skills/aap-mcp-server/` alike. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full rules.
 
 ### Skill directory contents
 
@@ -84,10 +94,11 @@ Each skill directory contains:
 
 ## Distribution
 
-Skills are distributed through two paths:
+Skills are distributed through three paths:
 
 - **Skills over MCP** — served as MCP Resources (`skill://aap/{id}`) from the [AAP MCP Server](https://github.com/ansible/aap-mcp-server)
 - **Compass / Lightforge** — registered as `AiResource` entities in the Red Hat catalog
+- **AAP product image** — the product set (`skills/aap-mcp-server/`) ships inside the aap-mcp-server container
 
 ## License
 
