@@ -342,6 +342,70 @@ def test_discovery_finds_a_skill_whose_directory_lost_the_prefix(tmp_path):
     assert [d.name for d in found] == ['aap-example', 'example']
 
 
+def test_discovery_finds_skills_in_the_product_group(tmp_path):
+    """skills/aap-mcp-server/ groups the product skills; it is not a skill."""
+    skills_dir = tmp_path / 'skills'
+    skills_dir.mkdir()
+    make_skill(skills_dir, name='aap-published')
+    make_skill(skills_dir / 'aap-mcp-server', name='aap-in-product')
+
+    found = validate_skills.discover_skill_dirs(skills_dir)
+
+    assert [d.name for d in found] == ['aap-in-product', 'aap-published']
+
+
+def test_discovery_works_when_the_product_group_is_absent(tmp_path):
+    """A checkout without the group — upstream, old branches — still works."""
+    skills_dir = tmp_path / 'skills'
+    skills_dir.mkdir()
+    make_skill(skills_dir, name='aap-published')
+
+    found = validate_skills.discover_skill_dirs(skills_dir)
+
+    assert [d.name for d in found] == ['aap-published']
+
+
+def test_discovery_finds_misnamed_skills_in_the_product_group(tmp_path):
+    """The rename tolerance holds inside the group, not just at the top."""
+    skills_dir = tmp_path / 'skills'
+    skills_dir.mkdir()
+    make_skill(skills_dir / 'aap-mcp-server', name='aap-example',
+               dirname='example')
+
+    found = validate_skills.discover_skill_dirs(skills_dir)
+
+    assert [d.name for d in found] == ['example']
+
+
+def test_directories_without_skill_md_are_reported_not_ignored(tmp_path):
+    """A skill that lost its SKILL.md is invisible to the catalog; say so."""
+    skills_dir = tmp_path / 'skills'
+    skills_dir.mkdir()
+    make_skill(skills_dir, name='aap-example')
+    (skills_dir / 'aap-lost-skill-md').mkdir()
+    (skills_dir / 'aap-mcp-server' / 'aap-also-lost').mkdir(parents=True)
+
+    strays = validate_skills.discover_stray_dirs(skills_dir)
+
+    assert [d.name for d in strays] == ['aap-also-lost', 'aap-lost-skill-md']
+
+
+def test_the_same_skill_name_at_both_levels_is_a_duplicate(tmp_path):
+    """The group makes same-named directories possible; the catalog cannot
+    serve both, so both are flagged rather than one shadowing the other."""
+    skills_dir = tmp_path / 'skills'
+    skills_dir.mkdir()
+    make_skill(skills_dir, name='aap-example')
+    make_skill(skills_dir / 'aap-mcp-server', name='aap-example')
+
+    errors = validate_skills.validate_unique_skill_dirs(
+        validate_skills.discover_skill_dirs(skills_dir))
+
+    assert len(errors) == 2
+    assert all("duplicate skill name 'aap-example'" in m
+               for m in messages(errors))
+
+
 # --- Ordering ---------------------------------------------------------------
 
 def test_limits_are_reported_even_when_front_matter_is_unparseable(tmp_path):

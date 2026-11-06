@@ -3,7 +3,7 @@
 Validate AAP skills against the content type definition.
 
 Checks:
-- Directory structure (skills/aap-{name}/SKILL.md)
+- Directory structure (skills/aap-{name}/SKILL.md and skills/aap-mcp-server/aap-{name}/SKILL.md)
 - YAML front matter parsing
 - Required fields (agentskills.io + Red Hat Skill fields)
 - Field constraints (kebab-case, semver, etc.)
@@ -42,6 +42,13 @@ MAX_SKILL_BYTES = 16 * 1024 * 1024  # 16 MiB (16,777,216 bytes)
 
 # Every skill directory must carry the AAP prefix.
 SKILL_DIR_PREFIX = 'aap-'
+
+# The one directory under skills/ that groups skill directories rather than
+# being one. Its children are the skills that ship inside the aap-mcp-server
+# container image; the name mirrors the submodule path in the container
+# build, where those skills are copied into the server. A skill directly
+# under skills/ is published by this repository but is not in that image.
+PRODUCT_GROUP_DIR = 'aap-mcp-server'
 
 # Front matter starts on line 2 of SKILL.md, after the opening '---'.
 FRONTMATTER_FIRST_LINE = 2
@@ -364,16 +371,77 @@ def validate_skill(skill_dir: Path) -> List[ValidationError]:
     return errors
 
 
+def skill_dirs_under(parent: Path) -> List[Path]:
+    """Skill directories directly under `parent`, sorted by name."""
+    return sorted(d for d in parent.iterdir()
+                  if d.is_dir() and (d / 'SKILL.md').is_file())
+
+
 def discover_skill_dirs(skills_dir: Path) -> List[Path]:
-    """Every directory under skills/ that holds a SKILL.md.
+    """Every skill directory under skills/, at either level.
+
+    skills/ holds skill directories directly plus one grouping directory,
+    aap-mcp-server/, whose children are the skills that ship inside the
+    aap-mcp-server container image. Both levels are scanned with the same
+    content rule, so a skill in the group cannot escape validation by
+    nesting — and neither can a misnamed one.
 
     Discovery is by content rather than by directory name. A skill whose
     directory was renamed out of the 'aap-' convention must still be found, or
     neither the naming check nor the directory-name/front-matter agreement
     check can ever fire for it.
     """
-    return sorted(d for d in skills_dir.iterdir()
-                  if d.is_dir() and (d / 'SKILL.md').is_file())
+    skill_dirs = skill_dirs_under(skills_dir)
+    group = skills_dir / PRODUCT_GROUP_DIR
+    if group.is_dir():
+        skill_dirs.extend(skill_dirs_under(group))
+    # Sorted by skill name, not by path: the two levels share no ordering,
+    # and a path sort interleaves them by the group's directory name.
+    return sorted(skill_dirs, key=lambda d: d.name)
+
+
+def discover_stray_dirs(skills_dir: Path) -> List[Path]:
+    """Directories under skills/ that are neither skills nor the group.
+
+    A directory without a SKILL.md is invisible to this validator and to the
+    server's catalog alike. The likeliest cause is a skill that was created
+    without, or has lost, its SKILL.md — a skill that then quietly does not
+    ship. Reporting these keeps that failure loud.
+    """
+    strays = []
+    group = skills_dir / PRODUCT_GROUP_DIR
+    for d in skills_dir.iterdir():
+        if d.is_dir() and d != group and not (d / 'SKILL.md').is_file():
+            strays.append(d)
+    if group.is_dir():
+        for d in group.iterdir():
+            if d.is_dir() and not (d / 'SKILL.md').is_file():
+                strays.append(d)
+    return sorted(strays, key=lambda d: d.name)
+
+
+def validate_unique_skill_dirs(skill_dirs: List[Path]) -> List[ValidationError]:
+    """No two skill directories may share a name, at either level.
+
+    The directory name must equal the front matter name, and SEP-2640
+    derives a skill's URI from that name, so two directories with the same
+    name are two skills claiming one catalog entry — one silently shadows
+    the other at serving time. The flat layout made this impossible; the
+    aap-mcp-server group makes it possible, so it is checked here.
+    """
+    errors = []
+    seen: Dict[str, Path] = {}
+    for skill_dir in skill_dirs:
+        first = seen.get(skill_dir.name)
+        if first is None:
+            seen[skill_dir.name] = skill_dir
+            continue
+        for dup in (first, skill_dir):
+            errors.append(ValidationError(
+                dup / 'SKILL.md',
+                f"duplicate skill name '{dup.name}' — one of the two "
+                f"silently shadows the other in the catalog"))
+    return errors
 
 
 def validate_docs_links(docs_dir: Path) -> List[ValidationError]:
@@ -426,6 +494,12 @@ def main():
 
     print(f"Validating {len(skill_dirs)} skill(s)...\n")
 
+    # Two skill directories sharing a name collide in the catalog. Possible
+    # only since the aap-mcp-server group added a second level under skills/.
+    for error in validate_unique_skill_dirs(skill_dirs):
+        all_errors.append(error)
+        print(error)
+
     # Validate each skill
     for skill_dir in skill_dirs:
         errors = validate_skill(skill_dir)
@@ -436,6 +510,18 @@ def main():
                 print(error)
         else:
             print(f"{GREEN}✓ {skill_dir.name}{RESET}")
+
+    # Directories that are neither skills nor the product group. They are
+    # invisible to discovery and to the server's catalog alike — usually a
+    # skill that lost its SKILL.md, which would otherwise quietly not ship.
+    for stray_dir in discover_stray_dirs(skills_dir):
+        warning = ValidationError(
+            stray_dir / 'SKILL.md',
+            f"no SKILL.md and not the '{PRODUCT_GROUP_DIR}' group, so it is "
+            f"neither validated nor served",
+            severity='warning')
+        all_errors.append(warning)
+        print(warning)
 
     # Validate docs/ links
     print(f"\nValidating docs/ links...\n")
